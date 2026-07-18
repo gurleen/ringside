@@ -1,0 +1,21 @@
+{
+  "projectName": "wrestling-app",
+  "mode": "file-router",
+  "typescript": true,
+  "tailwind": true,
+  "packageManager": "bun",
+  "git": false,
+  "install": true,
+  "intent": true,
+  "addOnOptions": {},
+  "includeExamples": false,
+  "envVarValues": {},
+  "routerOnly": false,
+  "version": 1,
+  "framework": "react",
+  "chosenAddOns": [
+    "tanstack-query",
+    "shadcn",
+    "eslint"
+  ]
+}

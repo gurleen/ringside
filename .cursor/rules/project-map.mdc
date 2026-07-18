@@ -1,0 +1,33 @@
+---
+description: Read and maintain PROJECT-MAP.md as the source of project truth
+alwaysApply: true
+---
+
+# Project Map is required reading
+
+Before responding to ANY task in this repo, **read `PROJECT-MAP.md`** at the
+repo root. It documents the stack, the Supabase schema/quirks, the server-fn +
+TanStack Query data-flow, conventions, and the file map — treat it as ground
+truth so you don't re-explore the whole project.
+
+## Read first
+
+- Read `PROJECT-MAP.md` at the start of every task (even small ones) before
+  planning or editing.
+- Follow its conventions (Bun via `bun --bun`, `#/*` alias, server-only
+  Supabase client, server functions + `*QueryOptions`, shadcn install command,
+  URL search-param state, promotion abbreviations mapped in code).
+- Do not hand-edit `src/routeTree.gen.ts` (generated).
+
+## Update after changes
+
+`PROJECT-MAP.md` MUST stay accurate. In the **same task** that you make a
+change, update the matching section (see its §11 "Maintaining this file"):
+
+- Routes / server functions / `src/lib` modules → update the file map & feature notes
+- Schema, migrations, RLS, indexes → update the Supabase + data-model sections
+- Dependencies, scripts, tooling, env vars → update the stack/running/env sections
+- New data quirks or gotchas → add a short note
+
+If a change makes any part of `PROJECT-MAP.md` wrong or incomplete, fix it
+before finishing. Keep edits concise and factual.
