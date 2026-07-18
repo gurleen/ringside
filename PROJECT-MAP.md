@@ -17,6 +17,7 @@ front end over it.
 | ------------------------- | ----------------------------------------------------------------------------------------------- |
 | Runtime / package manager | **Bun** (all scripts run Vite via `bun --bun`)                                                  |
 | Hosting                   | **Cloudflare Workers** (`@cloudflare/vite-plugin` + Wrangler; production runtime is workerd)    |
+| Source control            | GitHub [`gurleen/ringside`](https://github.com/gurleen/ringside) (`main`); Worker name `wrestling-app` |
 | Framework                 | TanStack Start (`@tanstack/react-start`) + TanStack Router (file-based)                         |
 | Data fetching             | TanStack Query (`@tanstack/react-query`) + SSR query integration                                |
 | UI                        | React 19, Tailwind CSS v4, shadcn/ui (new-york style, zinc base), lucide-react icons            |
