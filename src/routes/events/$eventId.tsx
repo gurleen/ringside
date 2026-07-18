@@ -14,10 +14,15 @@ import {
   MapPin,
   Moon,
   Pencil,
+  Swords,
   Trophy,
   Tv,
 } from 'lucide-react'
 import { eventQueryOptions, updateEventTime } from '#/lib/events'
+import {
+  rivalryIdsFromMatchSides,
+  rivalryKeyFromIds,
+} from '#/lib/rivalries-shared'
 import type {
   EnrichedEvent,
   EventDetail,
@@ -575,6 +580,7 @@ function MatchCard({
   // event-level lock instant has not passed yet.
   const showPrediction = match.isPredictable || !!prediction
   const showAdminMenu = isAdmin && match.sides.length >= 2
+  const rivalryIds = rivalryIdsFromMatchSides(match.sides)
 
   return (
     <Card className="gap-3 py-4">
@@ -588,6 +594,17 @@ function MatchCard({
               <Clock className="size-3.5" />
               {match.duration}
             </span>
+          )}
+          {rivalryIds && (
+            <Link
+              to="/rivalries/$rivalryKey"
+              params={{ rivalryKey: rivalryKeyFromIds(rivalryIds) }}
+              search={{ page: 1 }}
+              className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Swords className="size-3.5" />
+              Rivalry
+            </Link>
           )}
           {match.hasResult && (
             <Link

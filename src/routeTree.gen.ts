@@ -20,6 +20,7 @@ import { Route as LeaderboardIndexRouteImport } from './routes/leaderboard/index
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as WrestlersWrestlerIdRouteImport } from './routes/wrestlers/$wrestlerId'
 import { Route as TitlesTitleIdRouteImport } from './routes/titles/$titleId'
+import { Route as RivalriesRivalryKeyRouteImport } from './routes/rivalries/$rivalryKey'
 import { Route as MatchesMatchIdRouteImport } from './routes/matches/$matchId'
 import { Route as EventsEventIdRouteImport } from './routes/events/$eventId'
 import { Route as AuthConfirmRouteImport } from './routes/auth/confirm'
@@ -79,6 +80,11 @@ const TitlesTitleIdRoute = TitlesTitleIdRouteImport.update({
   path: '/titles/$titleId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RivalriesRivalryKeyRoute = RivalriesRivalryKeyRouteImport.update({
+  id: '/rivalries/$rivalryKey',
+  path: '/rivalries/$rivalryKey',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MatchesMatchIdRoute = MatchesMatchIdRouteImport.update({
   id: '/matches/$matchId',
   path: '/matches/$matchId',
@@ -102,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/auth/confirm': typeof AuthConfirmRoute
   '/events/$eventId': typeof EventsEventIdRoute
   '/matches/$matchId': typeof MatchesMatchIdRoute
+  '/rivalries/$rivalryKey': typeof RivalriesRivalryKeyRoute
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events/': typeof EventsIndexRoute
@@ -118,6 +125,7 @@ export interface FileRoutesByTo {
   '/auth/confirm': typeof AuthConfirmRoute
   '/events/$eventId': typeof EventsEventIdRoute
   '/matches/$matchId': typeof MatchesMatchIdRoute
+  '/rivalries/$rivalryKey': typeof RivalriesRivalryKeyRoute
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events': typeof EventsIndexRoute
@@ -135,6 +143,7 @@ export interface FileRoutesById {
   '/auth/confirm': typeof AuthConfirmRoute
   '/events/$eventId': typeof EventsEventIdRoute
   '/matches/$matchId': typeof MatchesMatchIdRoute
+  '/rivalries/$rivalryKey': typeof RivalriesRivalryKeyRoute
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events/': typeof EventsIndexRoute
@@ -153,6 +162,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/events/$eventId'
     | '/matches/$matchId'
+    | '/rivalries/$rivalryKey'
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events/'
@@ -169,6 +179,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/events/$eventId'
     | '/matches/$matchId'
+    | '/rivalries/$rivalryKey'
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events'
@@ -185,6 +196,7 @@ export interface FileRouteTypes {
     | '/auth/confirm'
     | '/events/$eventId'
     | '/matches/$matchId'
+    | '/rivalries/$rivalryKey'
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events/'
@@ -202,6 +214,7 @@ export interface RootRouteChildren {
   AuthConfirmRoute: typeof AuthConfirmRoute
   EventsEventIdRoute: typeof EventsEventIdRoute
   MatchesMatchIdRoute: typeof MatchesMatchIdRoute
+  RivalriesRivalryKeyRoute: typeof RivalriesRivalryKeyRoute
   TitlesTitleIdRoute: typeof TitlesTitleIdRoute
   WrestlersWrestlerIdRoute: typeof WrestlersWrestlerIdRoute
   EventsIndexRoute: typeof EventsIndexRoute
@@ -291,6 +304,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TitlesTitleIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/rivalries/$rivalryKey': {
+      id: '/rivalries/$rivalryKey'
+      path: '/rivalries/$rivalryKey'
+      fullPath: '/rivalries/$rivalryKey'
+      preLoaderRoute: typeof RivalriesRivalryKeyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/matches/$matchId': {
       id: '/matches/$matchId'
       path: '/matches/$matchId'
@@ -322,6 +342,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthConfirmRoute: AuthConfirmRoute,
   EventsEventIdRoute: EventsEventIdRoute,
   MatchesMatchIdRoute: MatchesMatchIdRoute,
+  RivalriesRivalryKeyRoute: RivalriesRivalryKeyRoute,
   TitlesTitleIdRoute: TitlesTitleIdRoute,
   WrestlersWrestlerIdRoute: WrestlersWrestlerIdRoute,
   EventsIndexRoute: EventsIndexRoute,

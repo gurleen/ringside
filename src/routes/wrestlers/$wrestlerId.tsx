@@ -16,17 +16,26 @@ import {
   wrestlerAdjacentMatchesQueryOptions,
   wrestlerMatchesQueryOptions,
   wrestlerQueryOptions,
+  wrestlersQueryOptions,
 } from '#/lib/wrestling'
 import type {
   WrestlerDetail,
   WrestlerMatch,
   WrestlerMatchOutcome,
 } from '#/lib/wrestling'
+import {
+  rivalryKeyFromIds,
+  rivalryMatchesQueryOptions,
+  rivalryQueryOptions,
+} from '#/lib/rivalries'
 import { Card, CardContent, CardHeader, CardTitle } from '#/components/ui/card'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
+import { Input } from '#/components/ui/input'
+import { Label } from '#/components/ui/label'
 import { Separator } from '#/components/ui/separator'
 import { Skeleton } from '#/components/ui/skeleton'
+import { Switch } from '#/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '#/components/ui/tabs'
 import {
   Table,
@@ -39,17 +48,25 @@ import {
 import { formatEventDate } from '#/routes/events/index'
 import { cn } from '#/lib/utils'
 import { MatchResultText } from '#/components/match-result-text'
+import { SpoilerWinner } from '#/components/spoiler-winner'
 
-type WrestlerTab = 'profile' | 'history' | 'matches'
+type WrestlerTab = 'profile' | 'history' | 'matches' | 'rivalries'
 
 function parseWrestlerTab(value: unknown): WrestlerTab {
-  if (value === 'matches' || value === 'history') return value
+  if (
+    value === 'matches' ||
+    value === 'history' ||
+    value === 'rivalries'
+  ) {
+    return value
+  }
   return 'profile'
 }
 
 interface WrestlerSearch {
   tab: WrestlerTab
   page: number
+  opponent?: string
 }
 
 export const Route = createFileRoute('/wrestlers/$wrestlerId')({
@@ -59,8 +76,16 @@ export const Route = createFileRoute('/wrestlers/$wrestlerId')({
       typeof search.page === 'number' && search.page > 0
         ? Math.floor(search.page)
         : 1,
+    opponent:
+      typeof search.opponent === 'string' && search.opponent.trim()
+        ? search.opponent.trim()
+        : undefined,
   }),
-  loaderDeps: ({ search }) => ({ tab: search.tab, page: search.page }),
+  loaderDeps: ({ search }) => ({
+    tab: search.tab,
+    page: search.page,
+    opponent: search.opponent,
+  }),
   loader: async ({ context, params, deps, cause }) => {
     const detail = await context.queryClient.ensureQueryData(
       wrestlerQueryOptions(params.wrestlerId),
@@ -85,6 +110,23 @@ export const Route = createFileRoute('/wrestlers/$wrestlerId')({
         void context.queryClient.prefetchQuery(options)
       } else {
         await context.queryClient.ensureQueryData(options)
+      }
+    }
+
+    if (deps.tab === 'rivalries' && deps.opponent) {
+      const ids = [params.wrestlerId, deps.opponent]
+      const rivalry = rivalryQueryOptions(ids)
+      const matches = rivalryMatchesQueryOptions(
+        ids,
+        deps.page,
+        params.wrestlerId,
+      )
+      if (cause === 'stay') {
+        void context.queryClient.prefetchQuery(rivalry)
+        void context.queryClient.prefetchQuery(matches)
+      } else {
+        await context.queryClient.ensureQueryData(rivalry)
+        await context.queryClient.ensureQueryData(matches)
       }
     }
   },
@@ -168,7 +210,7 @@ function WrestlerDetailSkeleton() {
 
 function WrestlerDetailPage() {
   const { wrestlerId } = Route.useParams()
-  const { tab, page } = Route.useSearch()
+  const { tab, page, opponent } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<WrestlerTab>(tab)
@@ -340,7 +382,8 @@ function WrestlerDetailPage() {
           void navigate({
             search: {
               tab: nextTab,
-              page: nextTab === 'matches' ? page : 1,
+              page: 1,
+              opponent: nextTab === 'rivalries' ? opponent : undefined,
             },
             // Same-page tab change; don't let scrollRestoration jump to top.
             resetScroll: false,
@@ -351,6 +394,7 @@ function WrestlerDetailPage() {
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="matches">Matches</TabsTrigger>
+          <TabsTrigger value="rivalries">Rivalries</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-4 pt-4">
@@ -367,6 +411,15 @@ function WrestlerDetailPage() {
 
         <TabsContent value="matches" className="pt-4">
           <WrestlerMatchesTab wrestlerId={wrestlerId} page={page} />
+        </TabsContent>
+
+        <TabsContent value="rivalries" className="pt-4">
+          <WrestlerRivalriesTab
+            wrestlerId={wrestlerId}
+            wrestlerName={wrestler.name}
+            opponentId={opponent}
+            page={page}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -771,6 +824,325 @@ function HeadshotCarousel({
   )
 }
 
+function WrestlerRivalriesTab({
+  wrestlerId,
+  wrestlerName,
+  opponentId,
+  page,
+}: {
+  wrestlerId: string
+  wrestlerName: string
+  opponentId?: string
+  page: number
+}) {
+  const navigate = useNavigate({ from: Route.fullPath })
+  const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [spoilers, setSpoilers] = useState(false)
+  const [includeOthers, setIncludeOthers] = useState(false)
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(query.trim()), 250)
+    return () => window.clearTimeout(id)
+  }, [query])
+
+  const { data: suggestions, isFetching: suggestionsLoading } = useQuery({
+    ...wrestlersQueryOptions(debounced, 1),
+    enabled: debounced.length >= 2,
+  })
+
+  const rivalryIds = opponentId ? [wrestlerId, opponentId] : []
+  const { data: rivalry } = useQuery({
+    ...rivalryQueryOptions(rivalryIds),
+    enabled: !!opponentId,
+  })
+  const { data, isPlaceholderData, isFetching } = useQuery({
+    ...rivalryMatchesQueryOptions(
+      rivalryIds,
+      page,
+      wrestlerId,
+      includeOthers,
+    ),
+    enabled: !!opponentId,
+    // Keep previous rows only while paginating. Switching includeOthers drops
+    // placeholder data so the table shows skeleton rows instead of a stale list.
+    placeholderData: (previousData, previousQuery) => {
+      const prevKey = previousQuery?.queryKey[3] as
+        | { includeOthers?: boolean }
+        | undefined
+      if (prevKey?.includeOthers === includeOthers) return previousData
+      return undefined
+    },
+  })
+
+  const opponent = rivalry?.wrestlers.find((w) => w.id === opponentId)
+  const filteredSuggestions =
+    suggestions?.wrestlers.filter((w) => w.id !== wrestlerId) ?? []
+  // No data yet (including after an includeOthers toggle with no cache).
+  const showTableSkeleton = !data
+  const totalPages = data
+    ? Math.max(1, Math.ceil(data.total / data.pageSize))
+    : 1
+  const showSuggestions =
+    debounced.length >= 2 && !opponentId && (suggestionsLoading || !!suggestions)
+
+  function selectOpponent(id: string) {
+    setQuery('')
+    setDebounced('')
+    void navigate({
+      search: { tab: 'rivalries', opponent: id, page: 1 },
+      resetScroll: false,
+    })
+  }
+
+  function clearOpponent() {
+    setQuery('')
+    setDebounced('')
+    void navigate({
+      search: { tab: 'rivalries', page: 1, opponent: undefined },
+      resetScroll: false,
+    })
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Rivalries</h2>
+        <p className="text-sm text-muted-foreground">
+          Search for a wrestler to see every match between them and{' '}
+          {wrestlerName}.
+        </p>
+      </div>
+
+      {opponentId && rivalry === null ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2">
+          <p className="text-sm text-muted-foreground">
+            Opponent not found.
+          </p>
+          <Button variant="ghost" size="sm" onClick={clearOpponent}>
+            Change
+          </Button>
+        </div>
+      ) : opponentId && opponent ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2">
+          <div className="min-w-0 space-y-0.5">
+            <p className="text-sm font-medium">
+              {wrestlerName}{' '}
+              <span className="text-muted-foreground">vs</span> {opponent.name}
+            </p>
+            {data ? (
+              <p className="text-xs text-muted-foreground">
+                {numberFmt.format(data.total)}{' '}
+                {data.total === 1 ? 'match' : 'matches'}
+              </p>
+            ) : (
+              <Skeleton className="h-4 w-20" />
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link
+                to="/rivalries/$rivalryKey"
+                params={{ rivalryKey: rivalryKeyFromIds(rivalryIds) }}
+                search={{ page: 1 }}
+              >
+                Open rivalry page
+              </Link>
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clearOpponent}>
+              Change
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="relative max-w-md space-y-1">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Type a wrestler name…"
+            autoComplete="off"
+            aria-label="Search opponent"
+          />
+          {showSuggestions && (
+            <div className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-md border bg-popover text-popover-foreground shadow-md">
+              {filteredSuggestions.length === 0 && !suggestionsLoading ? (
+                <p className="px-3 py-2 text-sm text-muted-foreground">
+                  No wrestlers found.
+                </p>
+              ) : (
+                <ul>
+                  {filteredSuggestions.map((w) => (
+                    <li key={w.id}>
+                      <button
+                        type="button"
+                        className="flex w-full px-3 py-2 text-left text-sm hover:bg-accent"
+                        onClick={() => selectOpponent(w.id)}
+                      >
+                        {w.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!opponentId && (
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          Type at least two characters to search for an opponent.
+        </p>
+      )}
+
+      {opponentId && (
+        <>
+          <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-2">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="rivalries-include-others"
+                checked={includeOthers}
+                disabled={isFetching}
+                onCheckedChange={(checked) => {
+                  setIncludeOthers(checked)
+                  if (page !== 1) {
+                    void navigate({
+                      search: {
+                        tab: 'rivalries',
+                        opponent: opponentId,
+                        page: 1,
+                      },
+                    })
+                  }
+                }}
+              />
+              <Label htmlFor="rivalries-include-others" className="text-sm">
+                Include matches with others
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="rivalries-spoilers"
+                checked={spoilers}
+                onCheckedChange={setSpoilers}
+              />
+              <Label htmlFor="rivalries-spoilers" className="text-sm">
+                Spoilers
+              </Label>
+            </div>
+          </div>
+          <div
+            className={cn(
+              'rounded-lg border transition-opacity',
+              isPlaceholderData && 'opacity-60',
+            )}
+            aria-busy={showTableSkeleton || isPlaceholderData}
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Winner</TableHead>
+                  <TableHead className="hidden w-32 sm:table-cell">
+                    Date
+                  </TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead className="hidden md:table-cell">Match</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {showTableSkeleton || !data ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Skeleton className="h-5 w-28" />
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        <Skeleton className="h-5 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-5 w-48 max-w-full" />
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        <Skeleton className="h-5 w-56" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : data.matches.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className="py-8 text-center text-muted-foreground"
+                    >
+                      No matches between these wrestlers.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  data.matches.map((match) => (
+                    <RivalryMatchRow
+                      key={match.id}
+                      match={{
+                        ...match,
+                        outcome: match.outcome ?? 'draw',
+                      }}
+                      spoilers={spoilers}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+
+      {opponentId && data && data.total > data.pageSize && (
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {numberFmt.format(totalPages)}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() =>
+                void navigate({
+                  search: (prev) => ({
+                    ...prev,
+                    tab: 'rivalries',
+                    opponent: opponentId,
+                    page: page - 1,
+                  }),
+                })
+              }
+            >
+              <ChevronLeft className="size-4" />
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() =>
+                void navigate({
+                  search: (prev) => ({
+                    ...prev,
+                    tab: 'rivalries',
+                    opponent: opponentId,
+                    page: page + 1,
+                  }),
+                })
+              }
+            >
+              Next
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function WrestlerMatchesTab({
   wrestlerId,
   page,
@@ -905,6 +1277,57 @@ function WrestlerMatchesTab({
   )
 }
 
+function RivalryMatchRow({
+  match,
+  spoilers,
+}: {
+  match: WrestlerMatch
+  spoilers: boolean
+}) {
+  return (
+    <TableRow>
+      <TableCell className="whitespace-normal">
+        <SpoilerWinner
+          winners={match.winners}
+          finishNote={match.finishNote}
+          result={match.result}
+          spoilers={spoilers}
+        />
+      </TableCell>
+      <TableCell className="hidden whitespace-nowrap text-muted-foreground sm:table-cell">
+        {formatEventDate(match.event.eventDate, match.event.date)}
+      </TableCell>
+      <TableCell className="whitespace-normal">
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground sm:hidden">
+            {formatEventDate(match.event.eventDate, match.event.date)}
+          </p>
+          <Link
+            to="/events/$eventId"
+            params={{ eventId: match.event.id }}
+            className="font-medium hover:underline"
+          >
+            {match.event.name ?? 'Untitled event'}
+          </Link>
+          <div className="flex flex-wrap items-center gap-1.5 md:hidden">
+            <MatchSummary match={match} showResult={false} />
+          </div>
+          {(match.event.promotionLabel || match.matchType) && (
+            <p className="text-xs text-muted-foreground">
+              {[match.event.promotionLabel, match.matchType]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
+        </div>
+      </TableCell>
+      <TableCell className="hidden whitespace-normal md:table-cell">
+        <MatchSummary match={match} showResult={false} />
+      </TableCell>
+    </TableRow>
+  )
+}
+
 function MatchRow({ match }: { match: WrestlerMatch }) {
   return (
     <TableRow>
@@ -946,7 +1369,13 @@ function MatchRow({ match }: { match: WrestlerMatch }) {
   )
 }
 
-function MatchSummary({ match }: { match: WrestlerMatch }) {
+function MatchSummary({
+  match,
+  showResult = true,
+}: {
+  match: WrestlerMatch
+  showResult?: boolean
+}) {
   const hasResult =
     match.winners.length > 0 ||
     match.losers.length > 0 ||
@@ -954,7 +1383,7 @@ function MatchSummary({ match }: { match: WrestlerMatch }) {
 
   return (
     <div className="space-y-1">
-      {hasResult && (
+      {showResult && hasResult && (
         <p className="text-sm">
           <MatchResultText
             winners={match.winners}

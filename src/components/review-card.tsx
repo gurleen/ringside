@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Share2, Trash2 } from 'lucide-react'
 import { ReviewForm } from '#/components/review-form'
+import { ReviewShareDialog } from '#/components/review-share-dialog'
 import { StarRatingDisplay } from '#/components/star-rating-display'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
@@ -47,6 +48,7 @@ export function ReviewCard({
 }) {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const isOwner = currentUser?.id === review.user_id
 
@@ -127,6 +129,15 @@ export function ReviewCard({
               type="button"
               variant="ghost"
               size="icon"
+              aria-label="Share review"
+              onClick={() => setSharing(true)}
+            >
+              <Share2 className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               aria-label="Edit review"
               onClick={() => setEditing(true)}
             >
@@ -179,6 +190,11 @@ export function ReviewCard({
           </p>
         )}
       </CardContent>
+      <ReviewShareDialog
+        review={review}
+        open={sharing}
+        onOpenChange={setSharing}
+      />
     </Card>
   )
 }

@@ -147,7 +147,7 @@ export function StarRatingInput({
           ))}
         </span>
         <span className="text-sm font-medium tabular-nums text-muted-foreground">
-          {value != null ? `${value.toFixed(2)} / 10` : 'No rating'}
+          {value != null ? value.toFixed(2) : 'No rating'}
         </span>
       </div>
       <div className="flex flex-wrap gap-2">

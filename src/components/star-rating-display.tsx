@@ -77,7 +77,7 @@ export function StarRatingDisplay({
       className={cn('inline-flex items-center gap-2', className)}
       aria-label={
         rating != null
-          ? `${rating.toFixed(2)} out of 10 stars${count != null ? `, ${count} reviews` : ''}`
+          ? `${rating.toFixed(2)} stars${count != null ? `, ${count} reviews` : ''}`
           : 'No rating'
       }
     >
@@ -88,7 +88,7 @@ export function StarRatingDisplay({
         })}
       </span>
       <span className="text-sm font-medium tabular-nums">
-        {rating != null ? `${rating.toFixed(2)} / 10` : '—'}
+        {rating != null ? rating.toFixed(2) : '—'}
       </span>
       {count != null && (
         <span className="text-sm text-muted-foreground">

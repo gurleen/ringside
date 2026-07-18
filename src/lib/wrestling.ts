@@ -141,7 +141,7 @@ export const wrestlerQueryOptions = (id: string) =>
 
 // ---- Wrestler match history ----
 
-const MATCH_PAGE_SIZE = 10
+export const MATCH_PAGE_SIZE = 10
 
 export type WrestlerMatchOutcome = 'win' | 'loss' | 'draw'
 
@@ -154,6 +154,10 @@ export interface WrestlerMatch {
   titleChange: boolean | null
   rating: number | null
   duration: string | null
+  /** Raw `matches.result` (`decisive` / `no_decision` / `unknown`). */
+  result: string | null
+  /** Finish label for non-decisive bouts (e.g. "No Contest", "Time Limit Draw"). */
+  finishNote: string | null
   outcome: WrestlerMatchOutcome
   winners: Array<string>
   losers: Array<string>
@@ -177,7 +181,7 @@ export interface WrestlerMatchPage {
 
 const sideOrder: Record<string, number> = { winner: 0, side: 1, loser: 2 }
 
-type WrestlerMatchMeta = {
+export type WrestlerMatchMeta = {
   eventDate: string | null
   date: string | null
   sideRole: string
@@ -223,7 +227,7 @@ function namesForRole(
 }
 
 /** Collect this wrestler's matches via participation rows (deduped). */
-async function collectWrestlerMatchMeta(
+export async function collectWrestlerMatchMeta(
   wrestlerId: string,
 ): Promise<Map<string, WrestlerMatchMeta>> {
   const supabase = getCachedSupabaseServerClient()
@@ -260,7 +264,7 @@ async function collectWrestlerMatchMeta(
   return byMatch
 }
 
-function sortMatchIdsDesc(
+export function sortMatchIdsDesc(
   byMatch: Map<string, WrestlerMatchMeta>,
 ): Array<string> {
   return Array.from(byMatch.entries())
@@ -275,7 +279,7 @@ function sortMatchIdsDesc(
     .map(([id]) => id)
 }
 
-async function hydrateWrestlerMatches(
+export async function hydrateWrestlerMatches(
   pageIds: Array<string>,
   byMatch: Map<string, WrestlerMatchMeta>,
 ): Promise<Array<WrestlerMatch>> {
@@ -285,7 +289,7 @@ async function hydrateWrestlerMatches(
   const { data: matchRows, error: mErr } = await supabase
     .from('matches')
     .select(
-      'id, match_type, title_id, title_name, title_change, duration, match_rating, events(id, name, date, event_date, promotion), match_sides(side_role, side_index, match_side_participants(participant_role, participant_id, participant_name, seq))',
+      'id, match_type, title_id, title_name, title_change, duration, match_rating, result, finish_note, events(id, name, date, event_date, promotion), match_sides(side_role, side_index, match_side_participants(participant_role, participant_id, participant_name, seq))',
     )
     .in('id', pageIds)
   if (mErr) throw new Error(mErr.message)
@@ -341,6 +345,8 @@ async function hydrateWrestlerMatches(
         titleChange: m.title_change,
         rating: m.match_rating,
         duration: m.duration,
+        result: m.result,
+        finishNote: m.finish_note,
         outcome,
         winners,
         losers,
