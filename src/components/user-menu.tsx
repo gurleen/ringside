@@ -1,11 +1,12 @@
-import { useRouter } from '@tanstack/react-router'
+import { Link, useRouter } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { LogOut } from 'lucide-react'
+import { LogOut, Star } from 'lucide-react'
 
 import type { AuthUser } from '#/lib/auth'
 import { currentUserQueryOptions, signOut } from '#/lib/auth'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
+import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import {
   DropdownMenu,
@@ -61,14 +62,28 @@ export function UserMenu({ user }: { user: AuthUser }) {
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col gap-1">
-            <span className="truncate text-sm font-medium">
-              {user.username}
-            </span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-medium">
+                {user.username}
+              </span>
+              {user.isAdmin && (
+                <Badge variant="secondary" className="shrink-0 text-[10px]">
+                  Admin
+                </Badge>
+              )}
+            </div>
             <span className="truncate text-xs text-muted-foreground">
               {user.email}
             </span>
           </div>
         </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/reviews" search={{ page: 1 }}>
+            <Star />
+            My Reviews
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={pending}

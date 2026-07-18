@@ -8,6 +8,7 @@ export type AuthUser = {
   id: string
   email: string
   username: string
+  isAdmin: boolean
 }
 
 const USERNAME_RE = /^[a-z0-9_]{3,30}$/
@@ -50,7 +51,7 @@ export async function loadAuthUser(
   const supabase = getSupabaseAuthClient()
   const { data: profile, error } = await supabase
     .from('profiles')
-    .select('username')
+    .select('username, is_admin')
     .eq('id', userId)
     .maybeSingle()
 
@@ -60,6 +61,7 @@ export async function loadAuthUser(
     id: userId,
     email,
     username: profile.username,
+    isAdmin: profile.is_admin ?? false,
   }
 }
 

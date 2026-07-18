@@ -22,6 +22,7 @@ import {
 } from '#/components/ui/sheet'
 import { currentUserQueryOptions } from '#/lib/auth'
 import type { AuthUser } from '#/lib/auth'
+import { promotionAbbrsQueryOptions } from '#/lib/promotions'
 
 import appCss from '../styles.css?url'
 
@@ -34,9 +35,10 @@ interface MyRouterContext {
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
   beforeLoad: async ({ context }) => {
-    const user = await context.queryClient.ensureQueryData(
-      currentUserQueryOptions(),
-    )
+    const [user] = await Promise.all([
+      context.queryClient.ensureQueryData(currentUserQueryOptions()),
+      context.queryClient.ensureQueryData(promotionAbbrsQueryOptions()),
+    ])
     return { user }
   },
   head: () => ({

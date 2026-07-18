@@ -2,43 +2,19 @@ import { createServerFn } from '@tanstack/react-start'
 import { queryOptions } from '@tanstack/react-query'
 import { getCachedSupabaseServerClient } from '#/lib/supabase'
 import { readDashboardCache } from '#/lib/dashboard-cache'
+import { getPromotionResolver } from '#/lib/promotions'
+import { performUpdateEventTime } from '#/lib/events.server'
 import { resolveTitleImageUrls, resolveWrestlerHeadshotUrls } from '#/lib/sdh'
+import { isMatchReviewable } from '#/lib/reviews-shared'
+import type { EventTimeInput } from '#/lib/events.server'
 import type { Tables } from '#/lib/database.types'
 
 export type EventRow = Tables<'events'>
 export type EnrichedEvent = EventRow & { promotionLabel: string | null }
 
+export { getPromotionResolver } from '#/lib/promotions'
+
 const PAGE_SIZE = 24
-
-// Local promotion abbreviations, keyed by full name. The DB only stores the
-// full promotion name, so we map to a short label here and fall back to the
-// full name when there's no known abbreviation.
-const PROMOTION_ABBREVIATIONS: Record<string, string> = {
-  'All Elite Wrestling': 'AEW',
-  'World Wrestling Entertainment': 'WWE',
-}
-
-function promotionLabelFor(name: string): string {
-  return PROMOTION_ABBREVIATIONS[name] ?? name
-}
-
-export async function getPromotionResolver(): Promise<
-  (promotionId: string | null) => string | null
-> {
-  const supabase = getCachedSupabaseServerClient()
-  const { data, error } = await supabase.from('promotions').select('id, name')
-  if (error) throw new Error(error.message)
-
-  const nameById = new Map<string, string>()
-  for (const p of data ?? []) nameById.set(p.id, p.name)
-
-  return (promotionId) => {
-    if (!promotionId) return null
-    const name = nameById.get(promotionId)
-    if (!name) return promotionId
-    return promotionLabelFor(name)
-  }
-}
 
 export interface PromotionOption {
   id: string
@@ -65,19 +41,10 @@ export const listEventPromotions = createServerFn({ method: 'GET' }).handler(
     const ids = new Set<string>()
     for (const r of rows ?? []) if (r.promotion) ids.add(r.promotion)
 
-    const { data: promos, error: pErr } = await supabase
-      .from('promotions')
-      .select('id, name')
-    if (pErr) throw new Error(pErr.message)
-
-    const nameById = new Map<string, string>()
-    for (const p of promos ?? []) nameById.set(p.id, p.name)
+    const resolvePromotion = await getPromotionResolver()
 
     return Array.from(ids)
-      .map((id) => {
-        const name = nameById.get(id)
-        return { id, label: name ? promotionLabelFor(name) : id }
-      })
+      .map((id) => ({ id, label: resolvePromotion(id) ?? id }))
       .sort((a, b) => a.label.localeCompare(b.label))
   },
 )
@@ -149,8 +116,7 @@ export const listEvents = createServerFn({ method: 'GET' })
       !data.promotion &&
       data.sort === 'date_desc'
     ) {
-      const cached =
-        await readDashboardCache<EventPage>('events_default_page')
+      const cached = await readDashboardCache<EventPage>('events_default_page')
       if (cached) return cached
     }
 
@@ -225,6 +191,7 @@ export interface MatchCardItem {
   titleChange: boolean | null
   duration: string | null
   result: string | null
+  hasResult: boolean
   finishNote: string | null
   rating: number | null
   votes: number | null
@@ -239,78 +206,65 @@ export interface EventDetail {
 
 const sideOrder: Record<string, number> = { winner: 0, side: 1, loser: 2 }
 
-export const getEvent = createServerFn({ method: 'GET' })
-  .validator((input: { id: string }) => ({ id: input.id }))
-  .handler(async ({ data }): Promise<EventDetail | null> => {
-    const supabase = getCachedSupabaseServerClient()
-
-    const { data: event, error } = await supabase
-      .from('events')
-      .select('*')
-      .eq('id', data.id)
-      .maybeSingle()
-    if (error) throw new Error(error.message)
-    if (!event) return null
-
-    const resolvePromotion = await getPromotionResolver()
-    const enrichedEvent: EnrichedEvent = {
-      ...event,
-      promotionLabel: resolvePromotion(event.promotion),
+type MatchRowWithChildren = Tables<'matches'> & {
+  match_sides: Array<
+    Tables<'match_sides'> & {
+      match_side_participants: Array<Tables<'match_side_participants'>>
     }
+  >
+  match_notes: Array<Tables<'match_notes'>>
+}
 
-    const { data: rows, error: matchError } = await supabase
-      .from('matches')
-      .select('*, match_sides(*, match_side_participants(*)), match_notes(*)')
-      .eq('event_id', data.id)
-      .order('match_index')
-    if (matchError) throw new Error(matchError.message)
+async function buildMatchCardItems(
+  matchRows: Array<MatchRowWithChildren>,
+): Promise<Array<MatchCardItem>> {
+  const supabase = getCachedSupabaseServerClient()
 
-    const matchRows = rows ?? []
-
-    // Collect wrestler participant ids to determine which are linkable.
-    const wrestlerIds = new Set<string>()
-    for (const m of matchRows) {
-      for (const s of m.match_sides) {
-        for (const p of s.match_side_participants) {
-          if (p.participant_role === 'wrestler' && p.participant_id) {
-            wrestlerIds.add(p.participant_id)
-          }
+  // Collect wrestler participant ids to determine which are linkable.
+  const wrestlerIds = new Set<string>()
+  for (const m of matchRows) {
+    for (const s of m.match_sides) {
+      for (const p of s.match_side_participants) {
+        if (p.participant_role === 'wrestler' && p.participant_id) {
+          wrestlerIds.add(p.participant_id)
         }
       }
     }
+  }
 
-    const linkable = new Set<string>()
-    let headshots = new Map<string, string>()
-    if (wrestlerIds.size > 0) {
-      const ids = Array.from(wrestlerIds)
-      const [{ data: valid, error: wErr }, headshotMap] = await Promise.all([
-        supabase.from('wrestlers').select('id').in('id', ids),
-        resolveWrestlerHeadshotUrls(ids),
-      ])
-      if (wErr) throw new Error(wErr.message)
-      for (const w of valid ?? []) linkable.add(w.id)
-      headshots = headshotMap
-    }
+  const linkable = new Set<string>()
+  let headshots = new Map<string, string>()
+  if (wrestlerIds.size > 0) {
+    const ids = Array.from(wrestlerIds)
+    const [{ data: valid, error: wErr }, headshotMap] = await Promise.all([
+      supabase.from('wrestlers').select('id').in('id', ids),
+      resolveWrestlerHeadshotUrls(ids),
+    ])
+    if (wErr) throw new Error(wErr.message)
+    for (const w of valid ?? []) linkable.add(w.id)
+    headshots = headshotMap
+  }
 
-    // Determine which match title ids exist in the titles table so we only
-    // link the ones that have a destination page. Also resolve SDH belt art.
-    const titleIds = new Set<string>()
-    for (const m of matchRows) if (m.title_id) titleIds.add(m.title_id)
+  // Determine which match title ids exist in the titles table so we only
+  // link the ones that have a destination page. Also resolve SDH belt art.
+  const titleIds = new Set<string>()
+  for (const m of matchRows) if (m.title_id) titleIds.add(m.title_id)
 
-    const linkableTitles = new Set<string>()
-    let titleImages = new Map<string, string>()
-    if (titleIds.size > 0) {
-      const ids = Array.from(titleIds)
-      const [{ data: validTitles, error: tErr }, images] = await Promise.all([
-        supabase.from('titles').select('id').in('id', ids),
-        resolveTitleImageUrls(ids),
-      ])
-      if (tErr) throw new Error(tErr.message)
-      for (const t of validTitles ?? []) linkableTitles.add(t.id)
-      titleImages = images
-    }
+  const linkableTitles = new Set<string>()
+  let titleImages = new Map<string, string>()
+  if (titleIds.size > 0) {
+    const ids = Array.from(titleIds)
+    const [{ data: validTitles, error: tErr }, images] = await Promise.all([
+      supabase.from('titles').select('id').in('id', ids),
+      resolveTitleImageUrls(ids),
+    ])
+    if (tErr) throw new Error(tErr.message)
+    for (const t of validTitles ?? []) linkableTitles.add(t.id)
+    titleImages = images
+  }
 
-    const matches: Array<MatchCardItem> = matchRows.map((m) => ({
+  return matchRows.map((m) => {
+    return {
       id: m.id,
       index: m.match_index,
       matchType: m.match_type,
@@ -321,6 +275,10 @@ export const getEvent = createServerFn({ method: 'GET' })
       titleChange: m.title_change,
       duration: m.duration,
       result: m.result,
+      hasResult: isMatchReviewable(
+        m.result,
+        m.match_sides.map((side) => side.side_role),
+      ),
       finishNote: m.finish_note,
       rating: m.match_rating,
       votes: m.match_votes,
@@ -354,9 +312,89 @@ export const getEvent = createServerFn({ method: 'GET' })
                   : null,
             })),
         })),
-    }))
+    }
+  })
+}
+
+export const getEvent = createServerFn({ method: 'GET' })
+  .validator((input: { id: string }) => ({ id: input.id }))
+  .handler(async ({ data }): Promise<EventDetail | null> => {
+    const supabase = getCachedSupabaseServerClient()
+
+    const { data: event, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', data.id)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!event) return null
+
+    const resolvePromotion = await getPromotionResolver()
+    const enrichedEvent: EnrichedEvent = {
+      ...event,
+      promotionLabel: resolvePromotion(event.promotion),
+    }
+
+    const { data: rows, error: matchError } = await supabase
+      .from('matches')
+      .select('*, match_sides(*, match_side_participants(*)), match_notes(*)')
+      .eq('event_id', data.id)
+      .order('match_index')
+    if (matchError) throw new Error(matchError.message)
+
+    const matches = await buildMatchCardItems(rows)
 
     return { event: enrichedEvent, matches }
+  })
+
+export type MatchSummary = MatchCardItem & { event: EnrichedEvent }
+
+export const getMatchSummary = createServerFn({ method: 'GET' })
+  .validator((input: { id: string }) => ({ id: input.id }))
+  .handler(async ({ data }): Promise<MatchSummary | null> => {
+    const supabase = getCachedSupabaseServerClient()
+
+    const { data: match, error } = await supabase
+      .from('matches')
+      .select('*, match_sides(*, match_side_participants(*)), match_notes(*)')
+      .eq('id', data.id)
+      .maybeSingle()
+    if (error) throw new Error(error.message)
+    if (!match) return null
+
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', match.event_id)
+      .maybeSingle()
+    if (eventError) throw new Error(eventError.message)
+    if (!event) return null
+
+    const resolvePromotion = await getPromotionResolver()
+    const cards = await buildMatchCardItems([match])
+    const card = cards[0]
+    if (!card.hasResult) return null
+
+    return {
+      ...card,
+      event: {
+        ...event,
+        promotionLabel: resolvePromotion(event.promotion),
+      },
+    }
+  })
+
+// Admin-only: set/clear an event's local venue start time + time zone.
+// Authorization + validation live in `events.server.ts`; RLS enforces the
+// admin check again at the database.
+export const updateEventTime = createServerFn({ method: 'POST' })
+  .validator((input: EventTimeInput) => ({
+    eventId: input.eventId,
+    eventTime: input.eventTime ?? null,
+    eventTimezone: input.eventTimezone ?? null,
+  }))
+  .handler(async ({ data }) => {
+    return performUpdateEventTime(data)
   })
 
 export const eventsQueryOptions = (
@@ -388,4 +426,10 @@ export const eventQueryOptions = (id: string) =>
   queryOptions({
     queryKey: ['event', id],
     queryFn: () => getEvent({ data: { id } }),
+  })
+
+export const matchSummaryQueryOptions = (id: string) =>
+  queryOptions({
+    queryKey: ['match', id],
+    queryFn: () => getMatchSummary({ data: { id } }),
   })

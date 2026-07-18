@@ -14,9 +14,11 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WrestlersIndexRouteImport } from './routes/wrestlers/index'
 import { Route as TitlesIndexRouteImport } from './routes/titles/index'
+import { Route as ReviewsIndexRouteImport } from './routes/reviews/index'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as WrestlersWrestlerIdRouteImport } from './routes/wrestlers/$wrestlerId'
 import { Route as TitlesTitleIdRouteImport } from './routes/titles/$titleId'
+import { Route as MatchesMatchIdRouteImport } from './routes/matches/$matchId'
 import { Route as EventsEventIdRouteImport } from './routes/events/$eventId'
 import { Route as AuthConfirmRouteImport } from './routes/auth/confirm'
 
@@ -45,6 +47,11 @@ const TitlesIndexRoute = TitlesIndexRouteImport.update({
   path: '/titles/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReviewsIndexRoute = ReviewsIndexRouteImport.update({
+  id: '/reviews/',
+  path: '/reviews/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EventsIndexRoute = EventsIndexRouteImport.update({
   id: '/events/',
   path: '/events/',
@@ -58,6 +65,11 @@ const WrestlersWrestlerIdRoute = WrestlersWrestlerIdRouteImport.update({
 const TitlesTitleIdRoute = TitlesTitleIdRouteImport.update({
   id: '/titles/$titleId',
   path: '/titles/$titleId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MatchesMatchIdRoute = MatchesMatchIdRouteImport.update({
+  id: '/matches/$matchId',
+  path: '/matches/$matchId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EventsEventIdRoute = EventsEventIdRouteImport.update({
@@ -77,9 +89,11 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/auth/confirm': typeof AuthConfirmRoute
   '/events/$eventId': typeof EventsEventIdRoute
+  '/matches/$matchId': typeof MatchesMatchIdRoute
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events/': typeof EventsIndexRoute
+  '/reviews/': typeof ReviewsIndexRoute
   '/titles/': typeof TitlesIndexRoute
   '/wrestlers/': typeof WrestlersIndexRoute
 }
@@ -89,9 +103,11 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/auth/confirm': typeof AuthConfirmRoute
   '/events/$eventId': typeof EventsEventIdRoute
+  '/matches/$matchId': typeof MatchesMatchIdRoute
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events': typeof EventsIndexRoute
+  '/reviews': typeof ReviewsIndexRoute
   '/titles': typeof TitlesIndexRoute
   '/wrestlers': typeof WrestlersIndexRoute
 }
@@ -102,9 +118,11 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/auth/confirm': typeof AuthConfirmRoute
   '/events/$eventId': typeof EventsEventIdRoute
+  '/matches/$matchId': typeof MatchesMatchIdRoute
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events/': typeof EventsIndexRoute
+  '/reviews/': typeof ReviewsIndexRoute
   '/titles/': typeof TitlesIndexRoute
   '/wrestlers/': typeof WrestlersIndexRoute
 }
@@ -116,9 +134,11 @@ export interface FileRouteTypes {
     | '/signup'
     | '/auth/confirm'
     | '/events/$eventId'
+    | '/matches/$matchId'
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events/'
+    | '/reviews/'
     | '/titles/'
     | '/wrestlers/'
   fileRoutesByTo: FileRoutesByTo
@@ -128,9 +148,11 @@ export interface FileRouteTypes {
     | '/signup'
     | '/auth/confirm'
     | '/events/$eventId'
+    | '/matches/$matchId'
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events'
+    | '/reviews'
     | '/titles'
     | '/wrestlers'
   id:
@@ -140,9 +162,11 @@ export interface FileRouteTypes {
     | '/signup'
     | '/auth/confirm'
     | '/events/$eventId'
+    | '/matches/$matchId'
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events/'
+    | '/reviews/'
     | '/titles/'
     | '/wrestlers/'
   fileRoutesById: FileRoutesById
@@ -153,9 +177,11 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   AuthConfirmRoute: typeof AuthConfirmRoute
   EventsEventIdRoute: typeof EventsEventIdRoute
+  MatchesMatchIdRoute: typeof MatchesMatchIdRoute
   TitlesTitleIdRoute: typeof TitlesTitleIdRoute
   WrestlersWrestlerIdRoute: typeof WrestlersWrestlerIdRoute
   EventsIndexRoute: typeof EventsIndexRoute
+  ReviewsIndexRoute: typeof ReviewsIndexRoute
   TitlesIndexRoute: typeof TitlesIndexRoute
   WrestlersIndexRoute: typeof WrestlersIndexRoute
 }
@@ -197,6 +223,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TitlesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reviews/': {
+      id: '/reviews/'
+      path: '/reviews'
+      fullPath: '/reviews/'
+      preLoaderRoute: typeof ReviewsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/events/': {
       id: '/events/'
       path: '/events'
@@ -216,6 +249,13 @@ declare module '@tanstack/react-router' {
       path: '/titles/$titleId'
       fullPath: '/titles/$titleId'
       preLoaderRoute: typeof TitlesTitleIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/matches/$matchId': {
+      id: '/matches/$matchId'
+      path: '/matches/$matchId'
+      fullPath: '/matches/$matchId'
+      preLoaderRoute: typeof MatchesMatchIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/$eventId': {
@@ -241,9 +281,11 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   AuthConfirmRoute: AuthConfirmRoute,
   EventsEventIdRoute: EventsEventIdRoute,
+  MatchesMatchIdRoute: MatchesMatchIdRoute,
   TitlesTitleIdRoute: TitlesTitleIdRoute,
   WrestlersWrestlerIdRoute: WrestlersWrestlerIdRoute,
   EventsIndexRoute: EventsIndexRoute,
+  ReviewsIndexRoute: ReviewsIndexRoute,
   TitlesIndexRoute: TitlesIndexRoute,
   WrestlersIndexRoute: WrestlersIndexRoute,
 }

@@ -14,9 +14,9 @@ import {
 } from 'lucide-react'
 import { eventPromotionsQueryOptions, eventsQueryOptions } from '#/lib/events'
 import type { EventSort } from '#/lib/events'
+import { formatVenueTime } from '#/lib/event-time'
 import { Input } from '#/components/ui/input'
 import { Button } from '#/components/ui/button'
-import { Badge } from '#/components/ui/badge'
 import { Skeleton } from '#/components/ui/skeleton'
 import { Switch } from '#/components/ui/switch'
 import { Label } from '#/components/ui/label'
@@ -117,7 +117,6 @@ function EventsPageSkeleton() {
               <TableHead>Event</TableHead>
               <TableHead className="hidden sm:table-cell">Date</TableHead>
               <TableHead className="hidden md:table-cell">Promotion</TableHead>
-              <TableHead className="text-right">Rating</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -131,9 +130,6 @@ function EventsPageSkeleton() {
                 </TableCell>
                 <TableCell className="hidden md:table-cell">
                   <Skeleton className="h-5 w-16" />
-                </TableCell>
-                <TableCell className="flex justify-end">
-                  <Skeleton className="h-5 w-12 rounded-full" />
                 </TableCell>
               </TableRow>
             ))}
@@ -246,7 +242,10 @@ function EventsPage() {
             value={promotion || ALL_PROMOTIONS}
             onValueChange={selectPromotion}
           >
-            <SelectTrigger className="w-[180px]" aria-label="Filter by promotion">
+            <SelectTrigger
+              className="w-[180px]"
+              aria-label="Filter by promotion"
+            >
               <SelectValue placeholder="All promotions" />
             </SelectTrigger>
             <SelectContent>
@@ -297,14 +296,13 @@ function EventsPage() {
                 </button>
               </TableHead>
               <TableHead className="hidden md:table-cell">Promotion</TableHead>
-              <TableHead className="text-right">Rating</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.events.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={3}
                   className="py-10 text-center text-muted-foreground"
                 >
                   No events found.
@@ -329,18 +327,19 @@ function EventsPage() {
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground sm:table-cell">
                     {formatEventDate(ev.event_date, ev.date)}
+                    {(() => {
+                      const time = formatVenueTime(
+                        ev.event_date,
+                        ev.event_time,
+                        ev.event_timezone,
+                      )
+                      return time ? (
+                        <div className="text-xs tabular-nums">{time}</div>
+                      ) : null
+                    })()}
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground md:table-cell">
                     {ev.promotionLabel ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {ev.event_rating != null ? (
-                      <Badge variant="secondary" className="tabular-nums">
-                        {ev.event_rating.toFixed(2)}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
                   </TableCell>
                 </TableRow>
               ))

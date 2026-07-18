@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { queryOptions } from '@tanstack/react-query'
 import { getCachedSupabaseServerClient } from '#/lib/supabase'
-import { getPromotionResolver } from '#/lib/events'
+import { getPromotionResolver } from '#/lib/promotions'
 import { readDashboardCache } from '#/lib/dashboard-cache'
 import { resolveTitleImageUrls } from '#/lib/sdh'
 import type { PromotionOption } from '#/lib/events'

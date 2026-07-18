@@ -1,6 +1,10 @@
 import { createFileRoute, Link, notFound } from '@tanstack/react-router'
-import { useSuspenseQuery } from '@tanstack/react-query'
-import { Fragment, useState } from 'react'
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseQuery,
+} from '@tanstack/react-query'
+import { Fragment, useEffect, useState } from 'react'
 import {
   ArrowLeft,
   CalendarDays,
@@ -9,20 +13,28 @@ import {
   ExternalLink,
   MapPin,
   Moon,
-  Star,
+  Pencil,
   Trophy,
   Tv,
 } from 'lucide-react'
-import { eventQueryOptions } from '#/lib/events'
+import { eventQueryOptions, updateEventTime } from '#/lib/events'
 import type {
+  EnrichedEvent,
   EventDetail,
   MatchCardItem,
   MatchParticipant,
   MatchSide,
 } from '#/lib/events'
+import { matchReviewSummariesQueryOptions } from '#/lib/reviews'
+import type { MatchReviewSummaries } from '#/lib/reviews'
+import { formatDeviceTime, formatVenueTime } from '#/lib/event-time'
+import { StarRatingDisplay } from '#/components/star-rating-display'
 import { formatEventDate } from '#/routes/events/index'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Badge } from '#/components/ui/badge'
+import { Button } from '#/components/ui/button'
+import { Input } from '#/components/ui/input'
+import { Label } from '#/components/ui/label'
 import { Separator } from '#/components/ui/separator'
 import { Skeleton } from '#/components/ui/skeleton'
 import { Avatar, AvatarFallback, AvatarImage } from '#/components/ui/avatar'
@@ -39,6 +51,10 @@ export const Route = createFileRoute('/events/$eventId')({
       eventQueryOptions(params.eventId),
     )
     if (!detail) throw notFound()
+    const matchIds = detail.matches.map((m) => m.id)
+    await context.queryClient.ensureQueryData(
+      matchReviewSummariesQueryOptions(matchIds),
+    )
   },
   component: EventDetailPage,
   pendingComponent: EventDetailSkeleton,
@@ -128,18 +144,30 @@ function isDarkMatch(matchType: string | null): boolean {
 
 function EventDetailPage() {
   const { eventId } = Route.useParams()
+  const { user } = Route.useRouteContext()
   const { data } = useSuspenseQuery(eventQueryOptions(eventId))
   const detail = data as EventDetail
   const { event, matches } = detail
+  const matchIds = matches.filter((m) => m.hasResult).map((m) => m.id)
+  const { data: reviewSummaries } = useSuspenseQuery(
+    matchReviewSummariesQueryOptions(matchIds),
+  )
 
   const mainMatches = matches.filter((m) => !isDarkMatch(m.matchType))
   const darkMatches = matches.filter((m) => isDarkMatch(m.matchType))
+
+  const venueTime = formatVenueTime(
+    event.event_date,
+    event.event_time,
+    event.event_timezone,
+  )
 
   const meta: Array<{ icon: typeof MapPin; value: string | null }> = [
     {
       icon: CalendarDays,
       value: formatEventDate(event.event_date, event.date),
     },
+    { icon: Clock, value: venueTime },
     { icon: MapPin, value: event.arena ?? event.location },
     { icon: Tv, value: event.tv_network },
   ]
@@ -166,31 +194,21 @@ function EventDetailPage() {
                 </span>
               ))}
           </div>
+          <DeviceTimeNote event={event} />
         </div>
-        <div className="flex items-center gap-3">
-          {event.event_rating != null && (
-            <div className="text-right">
-              <div className="inline-flex items-center gap-1 text-2xl font-bold tabular-nums">
-                <Star className="size-5 text-amber-500" />
-                {event.event_rating.toFixed(2)}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {event.event_votes ?? 0} votes
-              </div>
-            </div>
-          )}
-          {event.profile_url && (
-            <a
-              href={event.profile_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-            >
-              Profile <ExternalLink className="size-3.5" />
-            </a>
-          )}
-        </div>
+        {event.profile_url && (
+          <a
+            href={event.profile_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+          >
+            Profile <ExternalLink className="size-3.5" />
+          </a>
+        )}
       </div>
+
+      {user?.isAdmin && <EventTimeEditor event={event} />}
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between">
@@ -207,12 +225,21 @@ function EventDetailPage() {
           </p>
         ) : (
           <>
-            {darkMatches.length > 0 && <DarkMatches matches={darkMatches} />}
+            {darkMatches.length > 0 && (
+              <DarkMatches
+                matches={darkMatches}
+                reviewSummaries={reviewSummaries}
+              />
+            )}
 
             {mainMatches.length > 0 && (
               <div className="space-y-3">
                 {mainMatches.map((match) => (
-                  <MatchCard key={match.id} match={match} />
+                  <MatchCard
+                    key={match.id}
+                    match={match}
+                    reviewSummary={reviewSummaries[match.id]}
+                  />
                 ))}
               </div>
             )}
@@ -223,7 +250,171 @@ function EventDetailPage() {
   )
 }
 
-function DarkMatches({ matches }: { matches: Array<MatchCardItem> }) {
+// Device-local time, computed only in the browser to avoid an SSR/client
+// hydration mismatch (the server doesn't know the viewer's time zone).
+function DeviceTimeNote({ event }: { event: EnrichedEvent }) {
+  const [deviceTime, setDeviceTime] = useState<string | null>(null)
+  useEffect(() => {
+    setDeviceTime(
+      formatDeviceTime(
+        event.event_date,
+        event.event_time,
+        event.event_timezone,
+      ),
+    )
+  }, [event.event_date, event.event_time, event.event_timezone])
+
+  if (!deviceTime) return null
+  return (
+    <p className="text-xs text-muted-foreground">
+      {deviceTime} your time
+    </p>
+  )
+}
+
+function toTimeInputValue(value: string | null): string {
+  if (!value) return ''
+  const m = /^(\d{2}):(\d{2})/.exec(value)
+  return m ? `${m[1]}:${m[2]}` : ''
+}
+
+// Admin-only control to set/clear the event's local venue start time. Cagematch
+// doesn't provide times, so they're entered here.
+function EventTimeEditor({ event }: { event: EnrichedEvent }) {
+  const queryClient = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [time, setTime] = useState(() => toTimeInputValue(event.event_time))
+  const [timezone, setTimezone] = useState(() => event.event_timezone ?? '')
+  const [error, setError] = useState<string | null>(null)
+  const [zones] = useState<Array<string>>(() =>
+    typeof Intl.supportedValuesOf === 'function'
+      ? Intl.supportedValuesOf('timeZone')
+      : [],
+  )
+
+  // Default the zone to the admin's own zone once mounted (browser-only, so it
+  // doesn't cause a hydration mismatch on the controlled input).
+  useEffect(() => {
+    if (!timezone) {
+      const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      if (deviceTz) setTimezone(deviceTz)
+    }
+  }, [timezone])
+
+  const mutation = useMutation({
+    mutationFn: (vars: {
+      eventTime: string | null
+      eventTimezone: string | null
+    }) => updateEventTime({ data: { eventId: event.id, ...vars } }),
+    onSuccess: async () => {
+      setError(null)
+      await queryClient.invalidateQueries({ queryKey: ['event', event.id] })
+      setOpen(false)
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Could not save time.')
+    },
+  })
+
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-2">
+          <Pencil className="size-3.5" />
+          {event.event_time ? 'Edit start time' : 'Add start time'}
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-3">
+        <form
+          className="max-w-md space-y-4 rounded-lg border p-4"
+          onSubmit={(e) => {
+            e.preventDefault()
+            setError(null)
+            mutation.mutate({
+              eventTime: time || null,
+              eventTimezone: timezone || null,
+            })
+          }}
+        >
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold">Event start time</h3>
+            <p className="text-xs text-muted-foreground">
+              Local venue time. Not scraped from Cagematch.
+            </p>
+          </div>
+
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex flex-wrap gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="event-time">Start time</Label>
+              <Input
+                id="event-time"
+                type="time"
+                className="w-auto"
+                value={time}
+                disabled={mutation.isPending}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="event-timezone">Time zone</Label>
+              <Input
+                id="event-timezone"
+                list="event-timezone-options"
+                className="w-64"
+                placeholder="e.g. America/New_York"
+                value={timezone}
+                disabled={mutation.isPending}
+                onChange={(e) => setTimezone(e.target.value)}
+              />
+              <datalist id="event-timezone-options">
+                {zones.map((zone) => (
+                  <option key={zone} value={zone} />
+                ))}
+              </datalist>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={mutation.isPending}>
+              {mutation.isPending ? 'Saving…' : 'Save time'}
+            </Button>
+            {event.event_time && (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={mutation.isPending}
+                onClick={() => {
+                  setTime('')
+                  setTimezone('')
+                  mutation.mutate({ eventTime: null, eventTimezone: null })
+                }}
+              >
+                Clear time
+              </Button>
+            )}
+          </div>
+        </form>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+function DarkMatches({
+  matches,
+  reviewSummaries,
+}: {
+  matches: Array<MatchCardItem>
+  reviewSummaries: MatchReviewSummaries
+}) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -237,7 +428,11 @@ function DarkMatches({ matches }: { matches: Array<MatchCardItem> }) {
       </CollapsibleTrigger>
       <CollapsibleContent className="space-y-3">
         {matches.map((match) => (
-          <MatchCard key={match.id} match={match} />
+          <MatchCard
+            key={match.id}
+            match={match}
+            reviewSummary={reviewSummaries[match.id]}
+          />
         ))}
       </CollapsibleContent>
     </Collapsible>
@@ -297,9 +492,16 @@ function MatchMarquee({ match }: { match: MatchCardItem }) {
   )
 }
 
-function MatchCard({ match }: { match: MatchCardItem }) {
+function MatchCard({
+  match,
+  reviewSummary,
+}: {
+  match: MatchCardItem
+  reviewSummary?: { average: number | null; count: number }
+}) {
   const hasWinner = match.sides.some((s) => s.role === 'winner')
   const connector = hasWinner ? 'def.' : 'vs'
+  const reviewCount = reviewSummary?.count ?? 0
 
   return (
     <Card className="gap-3 py-4">
@@ -307,25 +509,37 @@ function MatchCard({ match }: { match: MatchCardItem }) {
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold tabular-nums">
           {match.index}
         </span>
-        <div className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-3 text-sm text-muted-foreground">
           {match.duration && (
             <span className="inline-flex items-center gap-1 tabular-nums">
               <Clock className="size-3.5" />
               {match.duration}
             </span>
           )}
-          {match.rating != null && (
-            <span className="inline-flex items-center gap-1 font-medium tabular-nums text-foreground">
-              <Star className="size-3.5 text-amber-500" />
-              {match.rating.toFixed(2)}
-            </span>
+          {match.hasResult && (
+            <Link
+              to="/matches/$matchId"
+              params={{ matchId: match.id }}
+              search={{ page: 1 }}
+              className="inline-flex items-center gap-1 text-foreground transition-colors hover:text-primary"
+            >
+              {reviewCount > 0 ? (
+                <StarRatingDisplay
+                  rating={reviewSummary?.average ?? null}
+                  count={reviewCount}
+                  mode="compact"
+                />
+              ) : (
+                <span className="text-muted-foreground hover:text-foreground">
+                  Reviews
+                </span>
+              )}
+            </Link>
           )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {(match.titleName || match.matchType) && (
-          <MatchMarquee match={match} />
-        )}
+        {(match.titleName || match.matchType) && <MatchMarquee match={match} />}
 
         <div className="flex flex-wrap items-start justify-center gap-x-4 gap-y-3">
           {match.sides.map((side, i) => (

@@ -69,6 +69,8 @@ export type Database = {
           date: string | null
           event_date: string | null
           event_rating: number | null
+          event_time: string | null
+          event_timezone: string | null
           event_type: string | null
           event_votes: number | null
           id: string
@@ -85,6 +87,8 @@ export type Database = {
           date?: string | null
           event_date?: string | null
           event_rating?: number | null
+          event_time?: string | null
+          event_timezone?: string | null
           event_type?: string | null
           event_votes?: number | null
           id: string
@@ -101,6 +105,8 @@ export type Database = {
           date?: string | null
           event_date?: string | null
           event_rating?: number | null
+          event_time?: string | null
+          event_timezone?: string | null
           event_type?: string | null
           event_votes?: number | null
           id?: string
@@ -262,19 +268,45 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_admin: boolean
           username: string
         }
         Insert: {
           created_at?: string
           id: string
+          is_admin?: boolean
           username: string
         }
         Update: {
           created_at?: string
           id?: string
+          is_admin?: boolean
           username?: string
         }
         Relationships: []
+      }
+      promotion_abbr: {
+        Row: {
+          abbreviation: string
+          promotion_id: string
+        }
+        Insert: {
+          abbreviation: string
+          promotion_id: string
+        }
+        Update: {
+          abbreviation?: string
+          promotion_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'promotion_abbr_promotion_id_fkey'
+            columns: ['promotion_id']
+            isOneToOne: true
+            referencedRelation: 'promotions'
+            referencedColumns: ['id']
+          },
+        ]
       }
       promotion_name_history: {
         Row: {
