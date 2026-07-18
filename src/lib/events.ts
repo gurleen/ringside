@@ -6,6 +6,7 @@ import { getPromotionResolver } from '#/lib/promotions'
 import { performUpdateEventTime } from '#/lib/events.server'
 import { resolveTitleImageUrls, resolveWrestlerHeadshotUrls } from '#/lib/sdh'
 import { isMatchReviewable } from '#/lib/reviews-shared'
+import { zonedWallTimeToInstant } from '#/lib/event-time'
 import type { EventTimeInput } from '#/lib/events.server'
 import type { Tables } from '#/lib/database.types'
 
@@ -79,11 +80,83 @@ export const getRecentEvents = createServerFn({ method: 'GET' }).handler(
   },
 )
 
+export type EventListItem = EnrichedEvent & {
+  /** Whether the event has started/happened yet; null when undeterminable. */
+  hasOccurred: boolean | null
+}
+
 export interface EventPage {
-  events: Array<EnrichedEvent>
+  events: Array<EventListItem>
   total: number
   page: number
   pageSize: number
+}
+
+// The dashboard_cache payload predates `hasOccurred`, so both the cached and
+// live paths produce this base shape and occurrence is attached afterwards.
+type EventPageBase = Omit<EventPage, 'events'> & {
+  events: Array<EnrichedEvent>
+}
+
+// Whether each event has happened yet. When an admin-entered start time is
+// available, the event "has occurred" once that instant passes. Otherwise we
+// fall back to the same signal review eligibility uses: at least one match
+// with a decisive result and winner/loser sides. Events with no usable signal
+// (no time, no matches) resolve to null.
+async function resolveEventOccurrences(
+  events: Array<EventRow>,
+): Promise<Map<string, boolean | null>> {
+  const occurred = new Map<string, boolean | null>()
+  const needMatchCheck: Array<string> = []
+  const now = Date.now()
+
+  for (const e of events) {
+    const start = zonedWallTimeToInstant(
+      e.event_date,
+      e.event_time,
+      e.event_timezone,
+    )
+    if (start) {
+      occurred.set(e.id, start.getTime() <= now)
+    } else {
+      occurred.set(e.id, null)
+      needMatchCheck.push(e.id)
+    }
+  }
+
+  if (needMatchCheck.length > 0) {
+    const supabase = getCachedSupabaseServerClient()
+    const { data, error } = await supabase
+      .from('matches')
+      .select('event_id, result, match_sides(side_role)')
+      .in('event_id', needMatchCheck)
+    if (error) throw new Error(error.message)
+
+    for (const m of data) {
+      const prev = occurred.get(m.event_id)
+      if (prev === true) continue
+      const reviewable = isMatchReviewable(
+        m.result,
+        m.match_sides.map((s) => s.side_role),
+      )
+      // Any decisive match means the event happened; a card of matches with
+      // no results yet means it hasn't.
+      occurred.set(m.event_id, reviewable ? true : false)
+    }
+  }
+
+  return occurred
+}
+
+async function attachEventOccurrences(base: EventPageBase): Promise<EventPage> {
+  const occurrences = await resolveEventOccurrences(base.events)
+  return {
+    ...base,
+    events: base.events.map((e) => ({
+      ...e,
+      hasOccurred: occurrences.get(e.id) ?? null,
+    })),
+  }
 }
 
 // Sort order for the events list, keyed on event_date.
@@ -116,8 +189,9 @@ export const listEvents = createServerFn({ method: 'GET' })
       !data.promotion &&
       data.sort === 'date_desc'
     ) {
-      const cached = await readDashboardCache<EventPage>('events_default_page')
-      if (cached) return cached
+      const cached =
+        await readDashboardCache<EventPageBase>('events_default_page')
+      if (cached) return attachEventOccurrences(cached)
     }
 
     const supabase = getCachedSupabaseServerClient()
@@ -151,7 +225,7 @@ export const listEvents = createServerFn({ method: 'GET' })
 
     const resolvePromotion = await getPromotionResolver()
 
-    return {
+    return attachEventOccurrences({
       events: (rows ?? []).map((e) => ({
         ...e,
         promotionLabel: resolvePromotion(e.promotion),
@@ -159,7 +233,7 @@ export const listEvents = createServerFn({ method: 'GET' })
       total: total ?? 0,
       page: data.page,
       pageSize: PAGE_SIZE,
-    }
+    })
   })
 
 export interface MatchParticipant {

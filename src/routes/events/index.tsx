@@ -15,6 +15,7 @@ import {
 import { eventPromotionsQueryOptions, eventsQueryOptions } from '#/lib/events'
 import type { EventSort } from '#/lib/events'
 import { formatVenueTime } from '#/lib/event-time'
+import { cn } from '#/lib/utils'
 import { Input } from '#/components/ui/input'
 import { Button } from '#/components/ui/button'
 import { Skeleton } from '#/components/ui/skeleton'
@@ -165,6 +166,28 @@ export function formatEventDate(
   return fallback ?? '—'
 }
 
+function EventStatusDot({ hasOccurred }: { hasOccurred: boolean | null }) {
+  const label =
+    hasOccurred === true
+      ? 'Has happened'
+      : hasOccurred === false
+        ? 'Upcoming'
+        : 'Status unknown'
+  return (
+    <span
+      className={cn(
+        'mt-1.5 size-2 shrink-0 rounded-full',
+        hasOccurred === true && 'bg-emerald-500',
+        hasOccurred === false && 'bg-amber-500',
+        hasOccurred === null && 'bg-muted-foreground/25',
+      )}
+      title={label}
+      role="img"
+      aria-label={label}
+    />
+  )
+}
+
 function EventsPage() {
   const { q, page, future, promotion, sort } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
@@ -312,18 +335,23 @@ function EventsPage() {
               data.events.map((ev) => (
                 <TableRow key={ev.id}>
                   <TableCell className="font-medium">
-                    <Link
-                      to="/events/$eventId"
-                      params={{ eventId: ev.id }}
-                      className="hover:underline"
-                    >
-                      {ev.name ?? 'Untitled event'}
-                    </Link>
-                    {ev.location && (
-                      <div className="text-xs text-muted-foreground">
-                        {ev.location}
+                    <div className="flex items-start gap-2">
+                      <EventStatusDot hasOccurred={ev.hasOccurred} />
+                      <div>
+                        <Link
+                          to="/events/$eventId"
+                          params={{ eventId: ev.id }}
+                          className="hover:underline"
+                        >
+                          {ev.name ?? 'Untitled event'}
+                        </Link>
+                        {ev.location && (
+                          <div className="text-xs text-muted-foreground">
+                            {ev.location}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground sm:table-cell">
                     {formatEventDate(ev.event_date, ev.date)}

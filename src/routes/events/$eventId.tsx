@@ -44,6 +44,13 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '#/components/ui/collapsible'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '#/components/ui/select'
 
 export const Route = createFileRoute('/events/$eventId')({
   loader: async ({ context, params }) => {
@@ -366,20 +373,22 @@ function EventTimeEditor({ event }: { event: EnrichedEvent }) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="event-timezone">Time zone</Label>
-              <Input
-                id="event-timezone"
-                list="event-timezone-options"
-                className="w-64"
-                placeholder="e.g. America/New_York"
-                value={timezone}
+              <Select
+                value={timezone || undefined}
                 disabled={mutation.isPending}
-                onChange={(e) => setTimezone(e.target.value)}
-              />
-              <datalist id="event-timezone-options">
-                {zones.map((zone) => (
-                  <option key={zone} value={zone} />
-                ))}
-              </datalist>
+                onValueChange={setTimezone}
+              >
+                <SelectTrigger id="event-timezone" className="w-64">
+                  <SelectValue placeholder="Select time zone…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {zones.map((zone) => (
+                    <SelectItem key={zone} value={zone}>
+                      {zone.replaceAll('_', ' ')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
