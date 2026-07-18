@@ -812,9 +812,6 @@ function WrestlerMatchesTab({
               <TableHead className="hidden w-32 sm:table-cell">Date</TableHead>
               <TableHead>Event</TableHead>
               <TableHead className="hidden md:table-cell">Match</TableHead>
-              <TableHead className="hidden w-20 text-right lg:table-cell">
-                Rating
-              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -944,15 +941,6 @@ function MatchRow({ match }: { match: WrestlerMatch }) {
       </TableCell>
       <TableCell className="hidden whitespace-normal md:table-cell">
         <MatchSummary match={match} />
-      </TableCell>
-      <TableCell className="hidden text-right lg:table-cell">
-        {match.rating != null ? (
-          <Badge variant="secondary" className="tabular-nums">
-            {match.rating.toFixed(2)}
-          </Badge>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
       </TableCell>
     </TableRow>
   )

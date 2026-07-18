@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { wrestlersQueryOptions } from '#/lib/wrestling'
 import { Input } from '#/components/ui/input'
 import { Button } from '#/components/ui/button'
-import { Badge } from '#/components/ui/badge'
 import { Skeleton } from '#/components/ui/skeleton'
 import {
   Table,
@@ -68,7 +67,6 @@ function WrestlersPageSkeleton() {
               <TableHead>Name</TableHead>
               <TableHead>Promotion</TableHead>
               <TableHead className="hidden sm:table-cell">Gender</TableHead>
-              <TableHead className="text-right">Rating</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -82,9 +80,6 @@ function WrestlersPageSkeleton() {
                 </TableCell>
                 <TableCell className="hidden sm:table-cell">
                   <Skeleton className="h-5 w-16" />
-                </TableCell>
-                <TableCell className="flex justify-end">
-                  <Skeleton className="h-5 w-12 rounded-full" />
                 </TableCell>
               </TableRow>
             ))}
@@ -158,14 +153,13 @@ function WrestlersPage() {
               <TableHead>Name</TableHead>
               <TableHead>Promotion</TableHead>
               <TableHead className="hidden sm:table-cell">Gender</TableHead>
-              <TableHead className="text-right">Rating</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.wrestlers.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={4}
+                  colSpan={3}
                   className="py-10 text-center text-muted-foreground"
                 >
                   No wrestlers found.
@@ -189,15 +183,6 @@ function WrestlersPage() {
                   </TableCell>
                   <TableCell className="hidden text-muted-foreground sm:table-cell">
                     {w.gender ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {w.roster_rating != null ? (
-                      <Badge variant="secondary" className="tabular-nums">
-                        {w.roster_rating.toFixed(2)}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
                   </TableCell>
                 </TableRow>
               ))
