@@ -120,6 +120,16 @@ function NavLinks({
       >
         Titles
       </Link>
+      <Link
+        to="/leaderboard"
+        preload="render"
+        search={{ page: 1 }}
+        activeProps={{ className: 'text-foreground font-medium' }}
+        className={linkClassName}
+        onClick={onNavigate}
+      >
+        Leaderboard
+      </Link>
     </>
   )
 }

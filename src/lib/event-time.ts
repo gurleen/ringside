@@ -5,6 +5,9 @@
 // safe to render during SSR. Device-time depends on the viewer's zone and must
 // only be computed in the browser (see callers) to avoid hydration mismatches.
 
+/** Fallback zone when an event has a date but no admin-set start time. */
+export const DEFAULT_EVENT_TZ = 'America/New_York'
+
 function zoneOffsetMs(instant: Date, timeZone: string): number {
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -53,6 +56,23 @@ export function zonedWallTimeToInstant(
   instant = new Date(naiveUTC - zoneOffsetMs(instant, timeZone))
   instant = new Date(naiveUTC - zoneOffsetMs(instant, timeZone))
   return instant
+}
+
+/**
+ * Absolute instant when predictions lock for an event. Uses the admin-entered
+ * start time when both time and timezone are set; otherwise midnight
+ * America/New_York on `event_date`. Returns null when there is no date.
+ */
+export function eventLockInstant(
+  eventDate: string | null,
+  eventTime: string | null,
+  eventTimezone: string | null,
+): Date | null {
+  if (!eventDate) return null
+  if (eventTime && eventTimezone) {
+    return zonedWallTimeToInstant(eventDate, eventTime, eventTimezone)
+  }
+  return zonedWallTimeToInstant(eventDate, '00:00:00', DEFAULT_EVENT_TZ)
 }
 
 function instantTimeLabel(instant: Date, timeZone: string): string {

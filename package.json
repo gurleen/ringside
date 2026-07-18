@@ -12,7 +12,7 @@
     "preview": "bun --bun vite preview",
     "deploy": "bun run build && wrangler deploy",
     "cf-typegen": "wrangler types",
-    "db-typegen": "supabase gen types --project-id thdvqllhnnbmqvmpqmql --schema public,reviews > src/lib/database.types.ts && prettier --write src/lib/database.types.ts",
+    "db-typegen": "supabase gen types --project-id thdvqllhnnbmqvmpqmql --schema public,reviews,predictions > src/lib/database.types.ts && prettier --write src/lib/database.types.ts",
     "test": "vitest run",
     "lint": "eslint",
     "format": "prettier --write . && eslint --fix",

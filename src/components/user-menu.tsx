@@ -1,7 +1,7 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { LogOut, Star } from 'lucide-react'
+import { Dices, LogOut, Star } from 'lucide-react'
 
 import type { AuthUser } from '#/lib/auth'
 import { currentUserQueryOptions, signOut } from '#/lib/auth'
@@ -82,6 +82,12 @@ export function UserMenu({ user }: { user: AuthUser }) {
           <Link to="/reviews" search={{ page: 1 }}>
             <Star />
             My Reviews
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/predictions" search={{ page: 1 }}>
+            <Dices />
+            My Predictions
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />

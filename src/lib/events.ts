@@ -6,7 +6,11 @@ import { getPromotionResolver } from '#/lib/promotions'
 import { performUpdateEventTime } from '#/lib/events.server'
 import { resolveTitleImageUrls, resolveWrestlerHeadshotUrls } from '#/lib/sdh'
 import { isMatchReviewable } from '#/lib/reviews-shared'
-import { zonedWallTimeToInstant } from '#/lib/event-time'
+import { isMatchPredictable } from '#/lib/predictions-shared'
+import {
+  eventLockInstant,
+  zonedWallTimeToInstant,
+} from '#/lib/event-time'
 import type { EventTimeInput } from '#/lib/events.server'
 import type { Tables } from '#/lib/database.types'
 
@@ -266,6 +270,8 @@ export interface MatchCardItem {
   duration: string | null
   result: string | null
   hasResult: boolean
+  /** True when the match has no decisive result yet and ≥2 sides. */
+  isPredictable: boolean
   finishNote: string | null
   rating: number | null
   votes: number | null
@@ -276,6 +282,9 @@ export interface MatchCardItem {
 export interface EventDetail {
   event: EnrichedEvent
   matches: Array<MatchCardItem>
+  /** ISO timestamp when predictions lock; null when the event has no date. */
+  predictionsLockAt: string | null
+  predictionsLocked: boolean
 }
 
 const sideOrder: Record<string, number> = { winner: 0, side: 1, loser: 2 }
@@ -353,6 +362,10 @@ async function buildMatchCardItems(
         m.result,
         m.match_sides.map((side) => side.side_role),
       ),
+      isPredictable: isMatchPredictable(
+        m.result,
+        m.match_sides.map((side) => side.side_role),
+      ),
       finishNote: m.finish_note,
       rating: m.match_rating,
       votes: m.match_votes,
@@ -417,8 +430,18 @@ export const getEvent = createServerFn({ method: 'GET' })
     if (matchError) throw new Error(matchError.message)
 
     const matches = await buildMatchCardItems(rows)
+    const lockAt = eventLockInstant(
+      event.event_date,
+      event.event_time,
+      event.event_timezone,
+    )
 
-    return { event: enrichedEvent, matches }
+    return {
+      event: enrichedEvent,
+      matches,
+      predictionsLockAt: lockAt ? lockAt.toISOString() : null,
+      predictionsLocked: !lockAt || lockAt.getTime() <= Date.now(),
+    }
   })
 
 export type MatchSummary = MatchCardItem & { event: EnrichedEvent }

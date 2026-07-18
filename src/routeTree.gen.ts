@@ -15,6 +15,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as WrestlersIndexRouteImport } from './routes/wrestlers/index'
 import { Route as TitlesIndexRouteImport } from './routes/titles/index'
 import { Route as ReviewsIndexRouteImport } from './routes/reviews/index'
+import { Route as PredictionsIndexRouteImport } from './routes/predictions/index'
+import { Route as LeaderboardIndexRouteImport } from './routes/leaderboard/index'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as WrestlersWrestlerIdRouteImport } from './routes/wrestlers/$wrestlerId'
 import { Route as TitlesTitleIdRouteImport } from './routes/titles/$titleId'
@@ -50,6 +52,16 @@ const TitlesIndexRoute = TitlesIndexRouteImport.update({
 const ReviewsIndexRoute = ReviewsIndexRouteImport.update({
   id: '/reviews/',
   path: '/reviews/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PredictionsIndexRoute = PredictionsIndexRouteImport.update({
+  id: '/predictions/',
+  path: '/predictions/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeaderboardIndexRoute = LeaderboardIndexRouteImport.update({
+  id: '/leaderboard/',
+  path: '/leaderboard/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EventsIndexRoute = EventsIndexRouteImport.update({
@@ -93,6 +105,8 @@ export interface FileRoutesByFullPath {
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events/': typeof EventsIndexRoute
+  '/leaderboard/': typeof LeaderboardIndexRoute
+  '/predictions/': typeof PredictionsIndexRoute
   '/reviews/': typeof ReviewsIndexRoute
   '/titles/': typeof TitlesIndexRoute
   '/wrestlers/': typeof WrestlersIndexRoute
@@ -107,6 +121,8 @@ export interface FileRoutesByTo {
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events': typeof EventsIndexRoute
+  '/leaderboard': typeof LeaderboardIndexRoute
+  '/predictions': typeof PredictionsIndexRoute
   '/reviews': typeof ReviewsIndexRoute
   '/titles': typeof TitlesIndexRoute
   '/wrestlers': typeof WrestlersIndexRoute
@@ -122,6 +138,8 @@ export interface FileRoutesById {
   '/titles/$titleId': typeof TitlesTitleIdRoute
   '/wrestlers/$wrestlerId': typeof WrestlersWrestlerIdRoute
   '/events/': typeof EventsIndexRoute
+  '/leaderboard/': typeof LeaderboardIndexRoute
+  '/predictions/': typeof PredictionsIndexRoute
   '/reviews/': typeof ReviewsIndexRoute
   '/titles/': typeof TitlesIndexRoute
   '/wrestlers/': typeof WrestlersIndexRoute
@@ -138,6 +156,8 @@ export interface FileRouteTypes {
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events/'
+    | '/leaderboard/'
+    | '/predictions/'
     | '/reviews/'
     | '/titles/'
     | '/wrestlers/'
@@ -152,6 +172,8 @@ export interface FileRouteTypes {
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events'
+    | '/leaderboard'
+    | '/predictions'
     | '/reviews'
     | '/titles'
     | '/wrestlers'
@@ -166,6 +188,8 @@ export interface FileRouteTypes {
     | '/titles/$titleId'
     | '/wrestlers/$wrestlerId'
     | '/events/'
+    | '/leaderboard/'
+    | '/predictions/'
     | '/reviews/'
     | '/titles/'
     | '/wrestlers/'
@@ -181,6 +205,8 @@ export interface RootRouteChildren {
   TitlesTitleIdRoute: typeof TitlesTitleIdRoute
   WrestlersWrestlerIdRoute: typeof WrestlersWrestlerIdRoute
   EventsIndexRoute: typeof EventsIndexRoute
+  LeaderboardIndexRoute: typeof LeaderboardIndexRoute
+  PredictionsIndexRoute: typeof PredictionsIndexRoute
   ReviewsIndexRoute: typeof ReviewsIndexRoute
   TitlesIndexRoute: typeof TitlesIndexRoute
   WrestlersIndexRoute: typeof WrestlersIndexRoute
@@ -228,6 +254,20 @@ declare module '@tanstack/react-router' {
       path: '/reviews'
       fullPath: '/reviews/'
       preLoaderRoute: typeof ReviewsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/predictions/': {
+      id: '/predictions/'
+      path: '/predictions'
+      fullPath: '/predictions/'
+      preLoaderRoute: typeof PredictionsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leaderboard/': {
+      id: '/leaderboard/'
+      path: '/leaderboard'
+      fullPath: '/leaderboard/'
+      preLoaderRoute: typeof LeaderboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/': {
@@ -285,6 +325,8 @@ const rootRouteChildren: RootRouteChildren = {
   TitlesTitleIdRoute: TitlesTitleIdRoute,
   WrestlersWrestlerIdRoute: WrestlersWrestlerIdRoute,
   EventsIndexRoute: EventsIndexRoute,
+  LeaderboardIndexRoute: LeaderboardIndexRoute,
+  PredictionsIndexRoute: PredictionsIndexRoute,
   ReviewsIndexRoute: ReviewsIndexRoute,
   TitlesIndexRoute: TitlesIndexRoute,
   WrestlersIndexRoute: WrestlersIndexRoute,

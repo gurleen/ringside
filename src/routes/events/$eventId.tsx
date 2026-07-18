@@ -27,8 +27,13 @@ import type {
 } from '#/lib/events'
 import { matchReviewSummariesQueryOptions } from '#/lib/reviews'
 import type { MatchReviewSummaries } from '#/lib/reviews'
+import {
+  eventPredictionsQueryOptions,
+  type EventPredictionMap,
+} from '#/lib/predictions'
 import { formatDeviceTime, formatVenueTime } from '#/lib/event-time'
 import { StarRatingDisplay } from '#/components/star-rating-display'
+import { PredictionSidePicker } from '#/components/prediction-side-picker'
 import { formatEventDate } from '#/routes/events/index'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Badge } from '#/components/ui/badge'
@@ -59,9 +64,14 @@ export const Route = createFileRoute('/events/$eventId')({
     )
     if (!detail) throw notFound()
     const matchIds = detail.matches.map((m) => m.id)
-    await context.queryClient.ensureQueryData(
-      matchReviewSummariesQueryOptions(matchIds),
-    )
+    await Promise.all([
+      context.queryClient.ensureQueryData(
+        matchReviewSummariesQueryOptions(matchIds),
+      ),
+      context.queryClient.ensureQueryData(
+        eventPredictionsQueryOptions(params.eventId),
+      ),
+    ])
   },
   component: EventDetailPage,
   pendingComponent: EventDetailSkeleton,
@@ -154,14 +164,21 @@ function EventDetailPage() {
   const { user } = Route.useRouteContext()
   const { data } = useSuspenseQuery(eventQueryOptions(eventId))
   const detail = data as EventDetail
-  const { event, matches } = detail
+  const { event, matches, predictionsLocked } = detail
   const matchIds = matches.filter((m) => m.hasResult).map((m) => m.id)
   const { data: reviewSummaries } = useSuspenseQuery(
     matchReviewSummariesQueryOptions(matchIds),
   )
+  const { data: predictions } = useSuspenseQuery(
+    eventPredictionsQueryOptions(eventId),
+  )
 
   const mainMatches = matches.filter((m) => !isDarkMatch(m.matchType))
   const darkMatches = matches.filter((m) => isDarkMatch(m.matchType))
+  const showPredictions =
+    !predictionsLocked ||
+    matches.some((m) => m.isPredictable) ||
+    Object.keys(predictions).length > 0
 
   const venueTime = formatVenueTime(
     event.event_date,
@@ -202,6 +219,13 @@ function EventDetailPage() {
               ))}
           </div>
           <DeviceTimeNote event={event} />
+          {showPredictions && (
+            <p className="text-xs text-muted-foreground">
+              {predictionsLocked
+                ? 'Predictions are locked for this event.'
+                : 'Predictions lock at event start — pick a winner on each match.'}
+            </p>
+          )}
         </div>
         {event.profile_url && (
           <a
@@ -236,6 +260,10 @@ function EventDetailPage() {
               <DarkMatches
                 matches={darkMatches}
                 reviewSummaries={reviewSummaries}
+                predictions={predictions}
+                predictionsLocked={predictionsLocked}
+                eventId={event.id}
+                signedIn={!!user}
               />
             )}
 
@@ -246,6 +274,10 @@ function EventDetailPage() {
                     key={match.id}
                     match={match}
                     reviewSummary={reviewSummaries[match.id]}
+                    prediction={predictions[match.id]}
+                    predictionsLocked={predictionsLocked}
+                    eventId={event.id}
+                    signedIn={!!user}
                   />
                 ))}
               </div>
@@ -420,9 +452,17 @@ function EventTimeEditor({ event }: { event: EnrichedEvent }) {
 function DarkMatches({
   matches,
   reviewSummaries,
+  predictions,
+  predictionsLocked,
+  eventId,
+  signedIn,
 }: {
   matches: Array<MatchCardItem>
   reviewSummaries: MatchReviewSummaries
+  predictions: EventPredictionMap
+  predictionsLocked: boolean
+  eventId: string
+  signedIn: boolean
 }) {
   const [open, setOpen] = useState(false)
 
@@ -441,6 +481,10 @@ function DarkMatches({
             key={match.id}
             match={match}
             reviewSummary={reviewSummaries[match.id]}
+            prediction={predictions[match.id]}
+            predictionsLocked={predictionsLocked}
+            eventId={eventId}
+            signedIn={signedIn}
           />
         ))}
       </CollapsibleContent>
@@ -504,13 +548,23 @@ function MatchMarquee({ match }: { match: MatchCardItem }) {
 function MatchCard({
   match,
   reviewSummary,
+  prediction,
+  predictionsLocked,
+  eventId,
+  signedIn,
 }: {
   match: MatchCardItem
   reviewSummary?: { average: number | null; count: number }
+  prediction?: EventPredictionMap[string]
+  predictionsLocked: boolean
+  eventId: string
+  signedIn: boolean
 }) {
   const hasWinner = match.sides.some((s) => s.role === 'winner')
   const connector = hasWinner ? 'def.' : 'vs'
   const reviewCount = reviewSummary?.count ?? 0
+  const showPrediction =
+    match.isPredictable || (!!prediction && predictionsLocked)
 
   return (
     <Card className="gap-3 py-4">
@@ -568,6 +622,20 @@ function MatchCard({
             </Fragment>
           ))}
         </div>
+
+        {showPrediction && (
+          <>
+            <Separator />
+            <PredictionSidePicker
+              eventId={eventId}
+              matchId={match.id}
+              sides={match.sides}
+              prediction={prediction}
+              locked={predictionsLocked || match.hasResult}
+              signedIn={signedIn}
+            />
+          </>
+        )}
 
         {(match.finishNote || match.notes.length > 0) && (
           <>

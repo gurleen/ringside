@@ -12,6 +12,61 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: '14.5'
   }
+  predictions: {
+    Tables: {
+      match_predictions: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          match_id: string
+          points_awarded: number | null
+          predicted_participants: Json
+          predicted_side_index: number
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          match_id: string
+          points_awarded?: number | null
+          predicted_participants: Json
+          predicted_side_index: number
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          match_id?: string
+          points_awarded?: number | null
+          predicted_participants?: Json
+          predicted_side_index?: number
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      score_event_predictions: { Args: { p_event_id: string }; Returns: number }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       dashboard_cache: {
@@ -1303,6 +1358,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  predictions: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },
