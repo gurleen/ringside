@@ -1177,7 +1177,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      admin_clear_match_result: {
+        Args: { p_match_id: string }
+        Returns: undefined
+      }
+      admin_set_match_result: {
+        Args: { p_match_id: string; p_winner_side_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

@@ -6,7 +6,7 @@ import { cn } from '#/lib/utils'
 const LABELS: Record<PredictionStatus, string> = {
   pending: 'Pending',
   correct: `Correct +${PREDICTION_POINTS_WINNER}`,
-  incorrect: 'Miss',
+  incorrect: 'Incorrect',
   void: 'Void',
 }
 

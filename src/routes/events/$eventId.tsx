@@ -34,6 +34,7 @@ import {
 import { formatDeviceTime, formatVenueTime } from '#/lib/event-time'
 import { StarRatingDisplay } from '#/components/star-rating-display'
 import { PredictionSidePicker } from '#/components/prediction-side-picker'
+import { AdminMatchResultMenu } from '#/components/admin-match-result-menu'
 import { formatEventDate } from '#/routes/events/index'
 import { Card, CardContent, CardHeader } from '#/components/ui/card'
 import { Badge } from '#/components/ui/badge'
@@ -264,6 +265,7 @@ function EventDetailPage() {
                 predictionsLocked={predictionsLocked}
                 eventId={event.id}
                 signedIn={!!user}
+                isAdmin={!!user?.isAdmin}
               />
             )}
 
@@ -278,6 +280,7 @@ function EventDetailPage() {
                     predictionsLocked={predictionsLocked}
                     eventId={event.id}
                     signedIn={!!user}
+                    isAdmin={!!user?.isAdmin}
                   />
                 ))}
               </div>
@@ -456,6 +459,7 @@ function DarkMatches({
   predictionsLocked,
   eventId,
   signedIn,
+  isAdmin,
 }: {
   matches: Array<MatchCardItem>
   reviewSummaries: MatchReviewSummaries
@@ -463,6 +467,7 @@ function DarkMatches({
   predictionsLocked: boolean
   eventId: string
   signedIn: boolean
+  isAdmin: boolean
 }) {
   const [open, setOpen] = useState(false)
 
@@ -485,6 +490,7 @@ function DarkMatches({
             predictionsLocked={predictionsLocked}
             eventId={eventId}
             signedIn={signedIn}
+            isAdmin={isAdmin}
           />
         ))}
       </CollapsibleContent>
@@ -552,6 +558,7 @@ function MatchCard({
   predictionsLocked,
   eventId,
   signedIn,
+  isAdmin,
 }: {
   match: MatchCardItem
   reviewSummary?: { average: number | null; count: number }
@@ -559,12 +566,15 @@ function MatchCard({
   predictionsLocked: boolean
   eventId: string
   signedIn: boolean
+  isAdmin: boolean
 }) {
   const hasWinner = match.sides.some((s) => s.role === 'winner')
   const connector = hasWinner ? 'def.' : 'vs'
   const reviewCount = reviewSummary?.count ?? 0
-  const showPrediction =
-    match.isPredictable || (!!prediction && predictionsLocked)
+  // Keep an existing pick visible after this match resolves, even when the
+  // event-level lock instant has not passed yet.
+  const showPrediction = match.isPredictable || !!prediction
+  const showAdminMenu = isAdmin && match.sides.length >= 2
 
   return (
     <Card className="gap-3 py-4">
@@ -598,6 +608,13 @@ function MatchCard({
                 </span>
               )}
             </Link>
+          )}
+          {showAdminMenu && (
+            <AdminMatchResultMenu
+              eventId={eventId}
+              matchId={match.id}
+              sides={match.sides}
+            />
           )}
         </div>
       </CardHeader>

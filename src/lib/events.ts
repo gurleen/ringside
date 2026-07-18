@@ -1,9 +1,16 @@
 import { createServerFn } from '@tanstack/react-start'
 import { queryOptions } from '@tanstack/react-query'
-import { getCachedSupabaseServerClient } from '#/lib/supabase'
+import {
+  getCachedSupabaseServerClient,
+  getSupabaseServerClient,
+} from '#/lib/supabase'
 import { readDashboardCache } from '#/lib/dashboard-cache'
 import { getPromotionResolver } from '#/lib/promotions'
-import { performUpdateEventTime } from '#/lib/events.server'
+import {
+  performClearMatchResult,
+  performSetMatchResult,
+  performUpdateEventTime,
+} from '#/lib/events.server'
 import { resolveTitleImageUrls, resolveWrestlerHeadshotUrls } from '#/lib/sdh'
 import { isMatchReviewable } from '#/lib/reviews-shared'
 import { isMatchPredictable } from '#/lib/predictions-shared'
@@ -11,7 +18,11 @@ import {
   eventLockInstant,
   zonedWallTimeToInstant,
 } from '#/lib/event-time'
-import type { EventTimeInput } from '#/lib/events.server'
+import type {
+  ClearMatchResultInput,
+  EventTimeInput,
+  SetMatchResultInput,
+} from '#/lib/events.server'
 import type { Tables } from '#/lib/database.types'
 
 export type EventRow = Tables<'events'>
@@ -406,7 +417,8 @@ async function buildMatchCardItems(
 export const getEvent = createServerFn({ method: 'GET' })
   .validator((input: { id: string }) => ({ id: input.id }))
   .handler(async ({ data }): Promise<EventDetail | null> => {
-    const supabase = getCachedSupabaseServerClient()
+    // Uncached: live admin results + predictions must not sit behind edge TTL.
+    const supabase = getSupabaseServerClient()
 
     const { data: event, error } = await supabase
       .from('events')
@@ -449,7 +461,8 @@ export type MatchSummary = MatchCardItem & { event: EnrichedEvent }
 export const getMatchSummary = createServerFn({ method: 'GET' })
   .validator((input: { id: string }) => ({ id: input.id }))
   .handler(async ({ data }): Promise<MatchSummary | null> => {
-    const supabase = getCachedSupabaseServerClient()
+    // Uncached: review pages must see admin-marked decisive results promptly.
+    const supabase = getSupabaseServerClient()
 
     const { data: match, error } = await supabase
       .from('matches')
@@ -492,6 +505,25 @@ export const updateEventTime = createServerFn({ method: 'POST' })
   }))
   .handler(async ({ data }) => {
     return performUpdateEventTime(data)
+  })
+
+// Admin-only: mark/clear a match winner on the live scraped tables (overwritten
+// by the nightly ETL). RPC enforces is_admin; app check is UX.
+export const setMatchResult = createServerFn({ method: 'POST' })
+  .validator((input: SetMatchResultInput) => ({
+    matchId: input.matchId,
+    winnerSideId: input.winnerSideId,
+  }))
+  .handler(async ({ data }) => {
+    return performSetMatchResult(data)
+  })
+
+export const clearMatchResult = createServerFn({ method: 'POST' })
+  .validator((input: ClearMatchResultInput) => ({
+    matchId: input.matchId,
+  }))
+  .handler(async ({ data }) => {
+    return performClearMatchResult(data)
   })
 
 export const eventsQueryOptions = (

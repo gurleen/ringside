@@ -1,11 +1,26 @@
 import { getSupabaseAuthClient } from '#/lib/supabase-auth.server'
 import { fetchCurrentUser } from '#/lib/auth.server'
+import { performScoreEventPredictions } from '#/lib/predictions.server'
 import type { Tables, TablesUpdate } from '#/lib/database.types'
 
 export type EventTimeInput = {
   eventId: string
   eventTime?: string | null
   eventTimezone?: string | null
+}
+
+export type SetMatchResultInput = {
+  matchId: string
+  winnerSideId: string
+}
+
+export type ClearMatchResultInput = {
+  matchId: string
+}
+
+export type MatchResultMutationResult = {
+  matchId: string
+  eventId: string
 }
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/
@@ -85,4 +100,66 @@ export async function performUpdateEventTime(
   if (error) throw new Error(error.message)
   if (!data) throw new Error('Event not found or you do not have access.')
   return data
+}
+
+async function requireAdminUser() {
+  const user = await fetchCurrentUser()
+  if (!user) throw new Error('You must be signed in.')
+  if (!user.isAdmin) throw new Error('Only admins can mark match results.')
+  return user
+}
+
+async function loadMatchEventId(matchId: string): Promise<string> {
+  const supabase = getSupabaseAuthClient()
+  const { data, error } = await supabase
+    .from('matches')
+    .select('event_id')
+    .eq('id', matchId)
+    .maybeSingle()
+
+  if (error) throw new Error(error.message)
+  if (!data) throw new Error('Match not found.')
+  return data.event_id
+}
+
+/** Admin-only: mark a winning side (rewrites match_sides; scraped overnight). */
+export async function performSetMatchResult(
+  input: SetMatchResultInput,
+): Promise<MatchResultMutationResult> {
+  await requireAdminUser()
+
+  const matchId = input.matchId.trim()
+  const winnerSideId = input.winnerSideId.trim()
+  if (!matchId) throw new Error('Match id is required.')
+  if (!winnerSideId) throw new Error('Winner side id is required.')
+
+  const eventId = await loadMatchEventId(matchId)
+  const supabase = getSupabaseAuthClient()
+  const { error } = await supabase.rpc('admin_set_match_result', {
+    p_match_id: matchId,
+    p_winner_side_id: winnerSideId,
+  })
+  if (error) throw new Error(error.message)
+
+  await performScoreEventPredictions(eventId)
+  return { matchId, eventId }
+}
+
+/** Admin-only: clear a marked result back to unresolved sides. */
+export async function performClearMatchResult(
+  input: ClearMatchResultInput,
+): Promise<MatchResultMutationResult> {
+  await requireAdminUser()
+
+  const matchId = input.matchId.trim()
+  if (!matchId) throw new Error('Match id is required.')
+
+  const eventId = await loadMatchEventId(matchId)
+  const supabase = getSupabaseAuthClient()
+  const { error } = await supabase.rpc('admin_clear_match_result', {
+    p_match_id: matchId,
+  })
+  if (error) throw new Error(error.message)
+
+  return { matchId, eventId }
 }
