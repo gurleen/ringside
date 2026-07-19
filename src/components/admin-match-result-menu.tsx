@@ -30,6 +30,8 @@ import {
   DropdownMenuTrigger,
 } from '#/components/ui/dropdown-menu'
 import { Button } from '#/components/ui/button'
+import { Checkbox } from '#/components/ui/checkbox'
+import { Label } from '#/components/ui/label'
 import { cn } from '#/lib/utils'
 
 function sideLabel(side: MatchSide): string {
@@ -49,16 +51,23 @@ export function AdminMatchResultMenu({
   eventId,
   matchId,
   sides,
+  isTitleMatch = false,
+  titleChange = false,
 }: {
   eventId: string
   matchId: string
   sides: Array<MatchSide>
+  /** When true, the set-result dialog shows a title-change checkbox. */
+  isTitleMatch?: boolean
+  /** Current matches.title_change (AND NEW! when true). */
+  titleChange?: boolean
 }) {
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [setOpen, setSetOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
   const [selectedSideId, setSelectedSideId] = useState<string | null>(null)
+  const [titleChanged, setTitleChanged] = useState(false)
 
   const winner = sides.find((s) => s.role === 'winner')
 
@@ -72,9 +81,16 @@ export function AdminMatchResultMenu({
   }
 
   const setResult = useMutation({
-    mutationFn: async (winnerSideId: string) => {
+    mutationFn: async (input: {
+      winnerSideId: string
+      titleChange: boolean
+    }) => {
       const result = await setMatchResult({
-        data: { matchId, winnerSideId },
+        data: {
+          matchId,
+          winnerSideId: input.winnerSideId,
+          titleChange: input.titleChange,
+        },
       })
       await invalidateMatchQueries()
       return result
@@ -108,12 +124,18 @@ export function AdminMatchResultMenu({
   })
 
   const pending = setResult.isPending || clearResult.isPending
+  const currentTitleChange = !!titleChange
+  const sideUnchanged = selectedSideId === winner?.id
+  const titleUnchanged = !isTitleMatch || titleChanged === currentTitleChange
+  const canSave =
+    !!selectedSideId && (!sideUnchanged || !titleUnchanged)
 
   if (sides.length < 2) return null
 
   function openSetResult() {
     setError(null)
     setSelectedSideId(winner?.id ?? null)
+    setTitleChanged(currentTitleChange)
     setSetOpen(true)
   }
 
@@ -205,6 +227,28 @@ export function AdminMatchResultMenu({
               )
             })}
           </div>
+          {isTitleMatch ? (
+            <div className="flex items-start gap-3 rounded-lg border px-4 py-3">
+              <Checkbox
+                id={`title-change-${matchId}`}
+                checked={titleChanged}
+                disabled={pending}
+                onCheckedChange={(checked) => setTitleChanged(checked === true)}
+              />
+              <div className="space-y-1 leading-none">
+                <Label
+                  htmlFor={`title-change-${matchId}`}
+                  className="text-sm font-medium"
+                >
+                  Title change
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Check for a new champion (AND NEW!). Leave unchecked when the
+                  champion retains (AND STILL!).
+                </p>
+              </div>
+            </div>
+          ) : null}
           {error ? (
             <p role="alert" className="text-sm text-destructive">
               {error}
@@ -221,11 +265,13 @@ export function AdminMatchResultMenu({
             </Button>
             <Button
               type="button"
-              disabled={
-                pending || !selectedSideId || selectedSideId === winner?.id
-              }
+              disabled={pending || !canSave}
               onClick={() => {
-                if (selectedSideId) setResult.mutate(selectedSideId)
+                if (!selectedSideId) return
+                setResult.mutate({
+                  winnerSideId: selectedSideId,
+                  titleChange: isTitleMatch ? titleChanged : false,
+                })
               }}
             >
               {setResult.isPending ? (

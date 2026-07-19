@@ -1,7 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode, Ref } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { toBlob } from 'html-to-image'
 import { Check, ClipboardCopy, Download, Loader2, Star } from 'lucide-react'
 import { Button } from '#/components/ui/button'
 import {
@@ -18,11 +17,16 @@ import { Switch } from '#/components/ui/switch'
 import { matchSummaryQueryOptions } from '#/lib/events'
 import type { MatchSummary } from '#/lib/events'
 import type { MatchReviewWithAuthor } from '#/lib/reviews'
+import {
+  PREVIEW_SIZE,
+  SHARE_SIZE,
+  copyPngBlob,
+  downloadPngBlob,
+  exportNodeToPngBlob,
+  shareFilename,
+} from '#/lib/share-card-export'
 import { wrestlerHeadshotDataUrlsQueryOptions } from '#/lib/share-image'
 import { formatEventDate } from '#/routes/events/index'
-
-const SHARE_SIZE = 1080
-const PREVIEW_SIZE = 360
 
 const VIEWING_LABELS: Record<string, string> = {
   in_person: 'In person',
@@ -148,17 +152,10 @@ export function ReviewShareDialog({
     : null
   const waitingOnHeadshots = headshotIds.length > 0 && headshotsLoading
 
-  async function exportPngBlob(): Promise<Blob> {
+  function exportPngBlob(): Promise<Blob> {
     const node = cardRef.current
-    if (!node) throw new Error('Share card is not ready.')
-    const blob = await toBlob(node, {
-      width: SHARE_SIZE,
-      height: SHARE_SIZE,
-      pixelRatio: 1,
-      cacheBust: true,
-    })
-    if (!blob) throw new Error('Could not export image.')
-    return blob
+    if (!node) return Promise.reject(new Error('Share card is not ready.'))
+    return exportNodeToPngBlob(node)
   }
 
   async function downloadPng() {
@@ -167,13 +164,10 @@ export function ReviewShareDialog({
     setCopied(false)
     try {
       const blob = await exportPngBlob()
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      const slug = (review.username ?? 'review').replace(/[^\w-]+/g, '-')
-      link.download = `ringside-${slug}-${review.id.slice(0, 8)}.png`
-      link.href = url
-      link.click()
-      URL.revokeObjectURL(url)
+      downloadPngBlob(
+        blob,
+        shareFilename('review', review.username, review.id),
+      )
     } catch (err) {
       setExportError(
         err instanceof Error ? err.message : 'Could not export image.',
@@ -188,17 +182,7 @@ export function ReviewShareDialog({
     setExportError(null)
     setCopied(false)
     try {
-      if (
-        typeof ClipboardItem === 'undefined' ||
-        !navigator.clipboard?.write
-      ) {
-        throw new Error('Clipboard image copy is not supported in this browser.')
-      }
-      // Hand ClipboardItem the pending promise: Safari rejects writes that
-      // happen after an await (user activation has expired by then).
-      await navigator.clipboard.write([
-        new ClipboardItem({ 'image/png': exportPngBlob() }),
-      ])
+      await copyPngBlob(exportPngBlob())
       setCopied(true)
     } catch (err) {
       setExportError(

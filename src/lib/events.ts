@@ -278,6 +278,17 @@ export interface MatchCardItem {
   /** SDH belt art when the title has a crosswalk match. */
   titleImageUrl: string | null
   titleChange: boolean | null
+  /**
+   * For decisive retained title matches: 1-based successful-defense count
+   * within the current reign, including this match. Null when unknown.
+   */
+  titleDefenseNumber: number | null
+  /**
+   * For decisive title changes: the new champion's reign number from
+   * `title_reign_champions` (e.g. 2 → "Begins 2nd reign"). Null when the
+   * reign is not in the database (partial coverage).
+   */
+  winnerReignNumber: number | null
   duration: string | null
   result: string | null
   hasResult: boolean
@@ -307,6 +318,171 @@ type MatchRowWithChildren = Tables<'matches'> & {
     }
   >
   match_notes: Array<Tables<'match_notes'>>
+}
+
+/** ISO `yyyy-mm-dd` → Cagematch text `DD.MM.YYYY`. */
+function isoToTextDate(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}.${m}.${y}`
+}
+
+/**
+ * Title context for decisive title matches:
+ * - retained (`title_change` false) → 1-based successful-defense count within
+ *   the current reign (matches for the same title since the latest earlier
+ *   title change), including the match itself;
+ * - changed → the new champion's `reign_count` from the `title_reigns` row
+ *   whose `from_date` matches the event date (partial coverage → may be
+ *   missing).
+ * Both keyed by match id. Undated events resolve to nothing.
+ */
+async function resolveTitleContext(
+  matchRows: Array<MatchRowWithChildren>,
+): Promise<{
+  defenseNumbers: Map<string, number>
+  reignNumbers: Map<string, number>
+}> {
+  const defenseNumbers = new Map<string, number>()
+  const reignNumbers = new Map<string, number>()
+
+  const decisiveTitleMatches = matchRows.filter(
+    (m) =>
+      m.title_id &&
+      isMatchReviewable(
+        m.result,
+        m.match_sides.map((s) => s.side_role),
+      ),
+  )
+  if (decisiveTitleMatches.length === 0) {
+    return { defenseNumbers, reignNumbers }
+  }
+
+  const retainedTitleIds = new Set<string>()
+  const changedTitleIds = new Set<string>()
+  for (const m of decisiveTitleMatches) {
+    if (m.title_change) changedTitleIds.add(m.title_id!)
+    else retainedTitleIds.add(m.title_id!)
+  }
+
+  const supabase = getCachedSupabaseServerClient()
+
+  // Event dates come from a direct lookup (not the possibly-stale history
+  // fetch) so freshly admin-marked matches still resolve their own date.
+  const eventIds = Array.from(
+    new Set(decisiveTitleMatches.map((m) => m.event_id)),
+  )
+  const [eventsRes, historyRes, reignsRes] = await Promise.all([
+    supabase.from('events').select('id, event_date').in('id', eventIds),
+    retainedTitleIds.size > 0
+      ? supabase
+          .from('matches')
+          .select('id, title_id, title_change, events(event_date)')
+          .in('title_id', Array.from(retainedTitleIds))
+          .eq('result', 'decisive')
+      : Promise.resolve({ data: [], error: null }),
+    changedTitleIds.size > 0
+      ? supabase
+          .from('title_reigns')
+          .select(
+            'id, title_id, from_date, title_reign_champions(seq, wrestler_id, wrestler_name, reign_count)',
+          )
+          .in('title_id', Array.from(changedTitleIds))
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (eventsRes.error) throw new Error(eventsRes.error.message)
+  if (historyRes.error) throw new Error(historyRes.error.message)
+  if (reignsRes.error) throw new Error(reignsRes.error.message)
+
+  const eventDates = new Map<string, string>()
+  for (const e of eventsRes.data ?? []) {
+    if (e.event_date) eventDates.set(e.id, e.event_date)
+  }
+
+  type HistoryEntry = { id: string; change: boolean; date: string }
+  const historyByTitle = new Map<string, Array<HistoryEntry>>()
+  for (const row of historyRes.data ?? []) {
+    if (!row.title_id) continue
+    const embedded = row.events
+    const date = (Array.isArray(embedded) ? embedded[0] : embedded)
+      ?.event_date
+    if (!date) continue
+    const list = historyByTitle.get(row.title_id) ?? []
+    list.push({ id: row.id, change: !!row.title_change, date })
+    historyByTitle.set(row.title_id, list)
+  }
+
+  for (const m of decisiveTitleMatches) {
+    const myDate = eventDates.get(m.event_id)
+    if (!myDate) continue
+
+    if (!m.title_change) {
+      const history = historyByTitle.get(m.title_id!) ?? []
+      // Latest title change on or before this match starts the current reign.
+      let reignStart: string | null = null
+      for (const h of history) {
+        if (!h.change || h.date > myDate) continue
+        if (reignStart === null || h.date > reignStart) reignStart = h.date
+      }
+      let priorDefenses = 0
+      for (const h of history) {
+        if (h.change || h.id === m.id) continue
+        if (h.date > myDate) continue
+        if (reignStart && h.date < reignStart) continue
+        priorDefenses++
+      }
+      // +1 counts this match itself (also sidesteps edge-cache staleness of
+      // its own freshly-marked row).
+      defenseNumbers.set(m.id, priorDefenses + 1)
+      continue
+    }
+
+    // Title change: find the reign starting on this date and the champion
+    // matching the winner side.
+    const fromDate = isoToTextDate(myDate)
+    const candidates = (reignsRes.data ?? []).filter(
+      (r) => r.title_id === m.title_id && r.from_date === fromDate,
+    )
+    if (candidates.length === 0) continue
+
+    const winnerIds = new Set<string>()
+    const winnerNames = new Set<string>()
+    for (const s of m.match_sides) {
+      if (s.side_role !== 'winner') continue
+      for (const p of s.match_side_participants) {
+        if (p.participant_role !== 'wrestler') continue
+        if (p.participant_id) winnerIds.add(p.participant_id)
+        if (p.participant_name) {
+          winnerNames.add(p.participant_name.toLowerCase())
+        }
+      }
+    }
+
+    let reignNumber: number | null = null
+    for (const reign of candidates) {
+      const champions = [...reign.title_reign_champions].sort(
+        (a, b) => a.seq - b.seq,
+      )
+      const matched = champions.find(
+        (c) =>
+          (c.wrestler_id && winnerIds.has(c.wrestler_id)) ||
+          (c.wrestler_name &&
+            winnerNames.has(c.wrestler_name.toLowerCase())),
+      )
+      if (matched?.reign_count != null) {
+        reignNumber = matched.reign_count
+        break
+      }
+    }
+    if (reignNumber == null && candidates.length === 1) {
+      const champions = [...candidates[0].title_reign_champions].sort(
+        (a, b) => a.seq - b.seq,
+      )
+      reignNumber = champions[0]?.reign_count ?? null
+    }
+    if (reignNumber != null) reignNumbers.set(m.id, reignNumber)
+  }
+
+  return { defenseNumbers, reignNumbers }
 }
 
 async function buildMatchCardItems(
@@ -357,6 +533,9 @@ async function buildMatchCardItems(
     titleImages = images
   }
 
+  const { defenseNumbers, reignNumbers } =
+    await resolveTitleContext(matchRows)
+
   return matchRows.map((m) => {
     return {
       id: m.id,
@@ -367,6 +546,8 @@ async function buildMatchCardItems(
       titleLinkable: !!m.title_id && linkableTitles.has(m.title_id),
       titleImageUrl: m.title_id ? (titleImages.get(m.title_id) ?? null) : null,
       titleChange: m.title_change,
+      titleDefenseNumber: defenseNumbers.get(m.id) ?? null,
+      winnerReignNumber: reignNumbers.get(m.id) ?? null,
       duration: m.duration,
       result: m.result,
       hasResult: isMatchReviewable(
@@ -513,6 +694,7 @@ export const setMatchResult = createServerFn({ method: 'POST' })
   .validator((input: SetMatchResultInput) => ({
     matchId: input.matchId,
     winnerSideId: input.winnerSideId,
+    titleChange: input.titleChange ?? false,
   }))
   .handler(async ({ data }) => {
     return performSetMatchResult(data)

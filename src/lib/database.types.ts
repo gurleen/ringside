@@ -1182,7 +1182,11 @@ export type Database = {
         Returns: undefined
       }
       admin_set_match_result: {
-        Args: { p_match_id: string; p_winner_side_id: string }
+        Args: {
+          p_match_id: string
+          p_winner_side_id: string
+          p_title_change?: boolean
+        }
         Returns: undefined
       }
     }

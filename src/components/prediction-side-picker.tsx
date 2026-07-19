@@ -8,7 +8,12 @@ import {
 } from '#/lib/predictions'
 import type { MatchPredictionRow } from '#/lib/predictions'
 import type { MatchSide } from '#/lib/events'
-import { sidesMatch } from '#/lib/predictions-shared'
+import {
+  pickLabel,
+  predictionSideParticipants,
+  sideLabel,
+  sidesMatch,
+} from '#/lib/predictions-shared'
 import { PredictionStatusBadge } from '#/components/prediction-status-badge'
 import {
   AlertDialog,
@@ -23,52 +28,6 @@ import {
 } from '#/components/ui/alert-dialog'
 import { Button } from '#/components/ui/button'
 import { cn } from '#/lib/utils'
-
-function sideLabel(side: MatchSide): string {
-  const wrestlers = side.participants.filter((p) => p.role === 'wrestler')
-  const names = (wrestlers.length > 0 ? wrestlers : side.participants)
-    .map((p) => p.name)
-    .filter(Boolean)
-  if (names.length === 0) return `Side ${side.sideIndex + 1}`
-  if (names.length <= 2) return names.join(' & ')
-  return `${names[0]} & ${names.length - 1} others`
-}
-
-function predictionSideParticipants(prediction: MatchPredictionRow) {
-  return Array.isArray(prediction.predicted_participants)
-    ? (
-        prediction.predicted_participants as Array<{
-          id?: string | null
-          name?: string | null
-        }>
-      ).map((p) => ({ ...p, role: 'wrestler' as const }))
-    : []
-}
-
-function resolvePickedSide(
-  sides: Array<MatchSide>,
-  prediction: MatchPredictionRow,
-): MatchSide | undefined {
-  return (
-    sides.find((s) => s.sideIndex === prediction.predicted_side_index) ??
-    sides.find((side) =>
-      sidesMatch(side.participants, predictionSideParticipants(prediction)),
-    )
-  )
-}
-
-function pickLabel(
-  sides: Array<MatchSide>,
-  prediction: MatchPredictionRow,
-): string {
-  const picked = resolvePickedSide(sides, prediction)
-  if (picked) return sideLabel(picked)
-  const names = predictionSideParticipants(prediction)
-    .map((p) => p.name)
-    .filter(Boolean)
-  if (names.length > 0) return names.join(' & ')
-  return `Side ${prediction.predicted_side_index + 1}`
-}
 
 export function PredictionSidePicker({
   eventId,

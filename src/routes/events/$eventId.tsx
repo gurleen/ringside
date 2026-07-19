@@ -14,6 +14,7 @@ import {
   MapPin,
   Moon,
   Pencil,
+  Share2,
   Swords,
   Trophy,
   Tv,
@@ -36,12 +37,23 @@ import {
   eventPredictionsQueryOptions,
   type EventPredictionMap,
 } from '#/lib/predictions'
+import {
+  hasCompletePredictionSlate,
+  predictionShareEligibleMatches,
+} from '#/lib/predictions-shared'
 import { formatDeviceTime, formatVenueTime } from '#/lib/event-time'
 import { StarRatingDisplay } from '#/components/star-rating-display'
 import { PredictionSidePicker } from '#/components/prediction-side-picker'
+import { PredictionShareDialog } from '#/components/prediction-share-dialog'
 import { AdminMatchResultMenu } from '#/components/admin-match-result-menu'
 import { formatEventDate } from '#/routes/events/index'
-import { Card, CardContent, CardHeader } from '#/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '#/components/ui/card'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
 import { Input } from '#/components/ui/input'
@@ -178,6 +190,7 @@ function EventDetailPage() {
   const { data: predictions } = useSuspenseQuery(
     eventPredictionsQueryOptions(eventId),
   )
+  const [shareOpen, setShareOpen] = useState(false)
 
   const mainMatches = matches.filter((m) => !isDarkMatch(m.matchType))
   const darkMatches = matches.filter((m) => isDarkMatch(m.matchType))
@@ -185,6 +198,9 @@ function EventDetailPage() {
     !predictionsLocked ||
     matches.some((m) => m.isPredictable) ||
     Object.keys(predictions).length > 0
+  const shareMatches = predictionShareEligibleMatches(matches)
+  const canSharePredictions =
+    !!user && hasCompletePredictionSlate(matches, predictions)
 
   const venueTime = formatVenueTime(
     event.event_date,
@@ -244,6 +260,35 @@ function EventDetailPage() {
           </a>
         )}
       </div>
+
+      {canSharePredictions ? (
+        <Card className="gap-3 py-4">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0 px-4 py-0">
+            <div className="space-y-1">
+              <CardTitle className="text-base">Share your predictions!</CardTitle>
+              <CardDescription>
+                You&apos;ve picked every match
+                {shareMatches.length > 0
+                  ? ` (${shareMatches.length})`
+                  : ''}
+                . Export a square image for socials.
+              </CardDescription>
+            </div>
+            <Button type="button" size="sm" onClick={() => setShareOpen(true)}>
+              <Share2 className="size-4" />
+              Share
+            </Button>
+          </CardHeader>
+          <PredictionShareDialog
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+            event={event}
+            matches={shareMatches}
+            predictions={predictions}
+            username={user?.username ?? null}
+          />
+        </Card>
+      ) : null}
 
       {user?.isAdmin && <EventTimeEditor event={event} />}
 
@@ -503,6 +548,73 @@ function DarkMatches({
   )
 }
 
+// Tag team titles render the belt art twice, the top copy offset down-right.
+function BeltImage({
+  imageUrl,
+  titleName,
+}: {
+  imageUrl: string
+  titleName: string | null
+}) {
+  const belt = (
+    <img
+      src={imageUrl}
+      alt=""
+      // SDH blocks hotlinking via Referer checks; omitting the
+      // header entirely is allowed.
+      referrerPolicy="no-referrer"
+      className="h-24 w-auto object-contain"
+    />
+  )
+  if (!/\btag team\b/i.test(titleName ?? '')) return belt
+  return (
+    <span className="relative inline-block pr-4 pb-4">
+      {belt}
+      <span className="absolute top-4 left-4">{belt}</span>
+    </span>
+  )
+}
+
+function ordinal(n: number): string {
+  const rem10 = n % 10
+  const rem100 = n % 100
+  if (rem10 === 1 && rem100 !== 11) return `${n}st`
+  if (rem10 === 2 && rem100 !== 12) return `${n}nd`
+  if (rem10 === 3 && rem100 !== 13) return `${n}rd`
+  return `${n}th`
+}
+
+// Large AND NEW! / AND STILL! callout for resolved title matches, with the
+// new champion's reign number or the running successful-defense count when
+// that context is available.
+function TitleResultCallout({ match }: { match: MatchCardItem }) {
+  const tagline = match.titleChange
+    ? match.winnerReignNumber != null
+      ? `Begins ${ordinal(match.winnerReignNumber)} reign`
+      : null
+    : match.titleDefenseNumber != null
+      ? `${ordinal(match.titleDefenseNumber)} successful title defense`
+      : null
+
+  return (
+    <div className="space-y-0.5 text-center">
+      <p
+        className={cn(
+          'text-2xl font-extrabold tracking-wide',
+          match.titleChange ? 'text-amber-500' : 'text-emerald-600',
+        )}
+      >
+        {match.titleChange ? 'AND NEW!' : 'AND STILL!'}
+      </p>
+      {tagline && (
+        <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+          {tagline}
+        </p>
+      )}
+    </div>
+  )
+}
+
 // Centered marquee above the competitors: belt art + title name when the
 // match is for a title (linked to the title page when the id resolves),
 // plus the match type.
@@ -510,13 +622,9 @@ function MatchMarquee({ match }: { match: MatchCardItem }) {
   const title = match.titleName ? (
     <span className="inline-flex flex-col items-center gap-1">
       {match.titleImageUrl ? (
-        <img
-          src={match.titleImageUrl}
-          alt=""
-          // SDH blocks hotlinking via Referer checks; omitting the
-          // header entirely is allowed.
-          referrerPolicy="no-referrer"
-          className="h-24 w-auto object-contain"
+        <BeltImage
+          imageUrl={match.titleImageUrl}
+          titleName={match.titleName}
         />
       ) : (
         <Trophy className="size-8 text-amber-500" />
@@ -631,6 +739,8 @@ function MatchCard({
               eventId={eventId}
               matchId={match.id}
               sides={match.sides}
+              isTitleMatch={!!match.titleName}
+              titleChange={!!match.titleChange}
             />
           )}
         </div>
@@ -638,13 +748,19 @@ function MatchCard({
       <CardContent className="space-y-3">
         {(match.titleName || match.matchType) && <MatchMarquee match={match} />}
 
-        <div className="flex flex-wrap items-start justify-center gap-x-4 gap-y-3">
+        {match.titleName && match.hasResult && (
+          <TitleResultCallout match={match} />
+        )}
+
+        {/* Stacked with a centered connector below `sm`; horizontal above. */}
+        <div className="flex flex-col items-center justify-center gap-x-4 gap-y-3 sm:flex-row sm:flex-wrap sm:items-start">
           {match.sides.map((side, i) => (
             <Fragment key={side.id}>
               {i > 0 && (
                 <div className="flex flex-col items-center gap-1.5">
-                  <div className="h-5" />
-                  <div className="flex h-14 items-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {/* Spacers align the connector with avatar rows on sm+. */}
+                  <div className="hidden h-5 sm:block" />
+                  <div className="flex items-center text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:h-14">
                     {connector}
                   </div>
                 </div>

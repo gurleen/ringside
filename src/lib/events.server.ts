@@ -12,6 +12,8 @@ export type EventTimeInput = {
 export type SetMatchResultInput = {
   matchId: string
   winnerSideId: string
+  /** When set on a title match, marks matches.title_change (AND NEW!). */
+  titleChange?: boolean
 }
 
 export type ClearMatchResultInput = {
@@ -138,6 +140,7 @@ export async function performSetMatchResult(
   const { error } = await supabase.rpc('admin_set_match_result', {
     p_match_id: matchId,
     p_winner_side_id: winnerSideId,
+    p_title_change: input.titleChange ?? false,
   })
   if (error) throw new Error(error.message)
 
