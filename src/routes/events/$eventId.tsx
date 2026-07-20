@@ -38,6 +38,8 @@ import {
   eventPredictionsQueryOptions,
   type EventPredictionMap,
 } from '#/lib/predictions'
+import { eventAttendanceQueryOptions } from '#/lib/shows'
+import { EventAttendanceControl } from '#/components/event-attendance-control'
 import {
   hasCompletePredictionSlate,
   predictionShareEligibleMatches,
@@ -91,6 +93,9 @@ export const Route = createFileRoute('/events/$eventId')({
       ),
       context.queryClient.ensureQueryData(
         eventPredictionsQueryOptions(params.eventId),
+      ),
+      context.queryClient.ensureQueryData(
+        eventAttendanceQueryOptions(params.eventId),
       ),
     ])
   },
@@ -193,6 +198,9 @@ function EventDetailPage() {
   const { data: predictions } = useSuspenseQuery(
     eventPredictionsQueryOptions(eventId),
   )
+  const { data: attendance } = useSuspenseQuery(
+    eventAttendanceQueryOptions(eventId),
+  )
   const { spoilers } = useSpoilers()
   const [shareOpen, setShareOpen] = useState(false)
 
@@ -247,6 +255,11 @@ function EventDetailPage() {
               ))}
           </div>
           <DeviceTimeNote event={event} />
+          <EventAttendanceControl
+            eventId={eventId}
+            attendance={attendance}
+            signedIn={!!user}
+          />
           {showPredictions && (
             <p className="text-xs text-muted-foreground">
               {predictionsLocked

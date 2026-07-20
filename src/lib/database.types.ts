@@ -1184,8 +1184,8 @@ export type Database = {
       admin_set_match_result: {
         Args: {
           p_match_id: string
-          p_winner_side_id: string
           p_title_change?: boolean
+          p_winner_side_id: string
         }
         Returns: undefined
       }
@@ -1235,6 +1235,49 @@ export type Database = {
           user_id?: string
           viewing_method?: string | null
           watched_at?: string | null
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+  shows: {
+    Tables: {
+      event_attendance: {
+        Row: {
+          attendance: string
+          created_at: string
+          event_id: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attendance: string
+          created_at?: string
+          event_id: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attendance?: string
+          created_at?: string
+          event_id?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -1376,6 +1419,9 @@ export const Constants = {
     Enums: {},
   },
   reviews: {
+    Enums: {},
+  },
+  shows: {
     Enums: {},
   },
 } as const
