@@ -17,6 +17,7 @@ import {
 } from '#/lib/rivalries'
 import type { RivalryMatch, RivalryWrestler } from '#/lib/rivalries'
 import { SpoilerWinner } from '#/components/spoiler-winner'
+import { useSpoilers } from '#/components/spoilers-provider'
 import { Avatar, AvatarFallback, AvatarImage } from '#/components/ui/avatar'
 import { Button } from '#/components/ui/button'
 import { Card, CardContent } from '#/components/ui/card'
@@ -106,7 +107,7 @@ function RivalryPage() {
   const { rivalryKey } = Route.useParams()
   const { page } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
-  const [spoilers, setSpoilers] = useState(false)
+  const { spoilers } = useSpoilers()
   const [includeOthers, setIncludeOthers] = useState(false)
   const ids = parseRivalryKey(rivalryKey)!
 
@@ -172,16 +173,6 @@ function RivalryPage() {
             />
             <Label htmlFor="rivalry-include-others" className="text-sm">
               Include matches with others
-            </Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="rivalry-spoilers"
-              checked={spoilers}
-              onCheckedChange={setSpoilers}
-            />
-            <Label htmlFor="rivalry-spoilers" className="text-sm">
-              Spoilers
             </Label>
           </div>
         </div>

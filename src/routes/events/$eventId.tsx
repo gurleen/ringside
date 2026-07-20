@@ -46,7 +46,9 @@ import { StarRatingDisplay } from '#/components/star-rating-display'
 import { PredictionSidePicker } from '#/components/prediction-side-picker'
 import { PredictionShareDialog } from '#/components/prediction-share-dialog'
 import { AdminMatchResultMenu } from '#/components/admin-match-result-menu'
+import { useSpoilers } from '#/components/spoilers-provider'
 import { formatEventDate } from '#/routes/events/index'
+import { unspoiledMatchCard } from '#/lib/spoilers-shared'
 import {
   Card,
   CardContent,
@@ -665,7 +667,7 @@ function MatchMarquee({ match }: { match: MatchCardItem }) {
 }
 
 function MatchCard({
-  match,
+  match: rawMatch,
   reviewSummary,
   prediction,
   predictionsLocked,
@@ -681,14 +683,20 @@ function MatchCard({
   signedIn: boolean
   isAdmin: boolean
 }) {
+  const { spoilers } = useSpoilers()
+  // Display copy only — admin menu / prediction lock still use the real card.
+  const match =
+    spoilers || !rawMatch.hasResult
+      ? rawMatch
+      : unspoiledMatchCard(rawMatch)
   const hasWinner = match.sides.some((s) => s.role === 'winner')
   const connector = hasWinner ? 'def.' : 'vs'
   const reviewCount = reviewSummary?.count ?? 0
   // Keep an existing pick visible after this match resolves, even when the
   // event-level lock instant has not passed yet.
-  const showPrediction = match.isPredictable || !!prediction
-  const showAdminMenu = isAdmin && match.sides.length >= 2
-  const rivalryIds = rivalryIdsFromMatchSides(match.sides)
+  const showPrediction = rawMatch.isPredictable || !!prediction
+  const showAdminMenu = isAdmin && rawMatch.sides.length >= 2
+  const rivalryIds = rivalryIdsFromMatchSides(rawMatch.sides)
 
   return (
     <Card className="gap-3 py-4">
@@ -737,10 +745,10 @@ function MatchCard({
           {showAdminMenu && (
             <AdminMatchResultMenu
               eventId={eventId}
-              matchId={match.id}
-              sides={match.sides}
-              isTitleMatch={!!match.titleName}
-              titleChange={!!match.titleChange}
+              matchId={rawMatch.id}
+              sides={rawMatch.sides}
+              isTitleMatch={!!rawMatch.titleName}
+              titleChange={!!rawMatch.titleChange}
             />
           )}
         </div>
@@ -778,10 +786,10 @@ function MatchCard({
             <Separator />
             <PredictionSidePicker
               eventId={eventId}
-              matchId={match.id}
-              sides={match.sides}
+              matchId={rawMatch.id}
+              sides={rawMatch.sides}
               prediction={prediction}
-              locked={predictionsLocked || match.hasResult}
+              locked={predictionsLocked || rawMatch.hasResult}
               signedIn={signedIn}
             />
           </>

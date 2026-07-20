@@ -15,6 +15,7 @@ import {
   sidesMatch,
 } from '#/lib/predictions-shared'
 import { PredictionStatusBadge } from '#/components/prediction-status-badge'
+import { useSpoilers } from '#/components/spoilers-provider'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +46,7 @@ export function PredictionSidePicker({
   signedIn: boolean
 }) {
   const queryClient = useQueryClient()
+  const { spoilers } = useSpoilers()
   const [error, setError] = useState<string | null>(null)
   const [changing, setChanging] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
@@ -113,7 +115,11 @@ export function PredictionSidePicker({
     }
     return (
       <div className="flex flex-col items-center gap-1.5 text-center">
-        <PredictionStatusBadge status={prediction.status} />
+        <PredictionStatusBadge
+          // Correct/Incorrect/Void reveal the outcome — keep Pending until
+          // spoilers are on.
+          status={spoilers ? prediction.status : 'pending'}
+        />
         <p className="text-sm font-medium">
           You selected <span className="text-foreground">{selectedLabel}</span>
         </p>
