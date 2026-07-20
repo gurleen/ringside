@@ -32,7 +32,7 @@ export const Route = createFileRoute('/login')({
   }),
   beforeLoad: ({ context }) => {
     if (context.user) {
-      throw redirect({ to: '/' })
+      throw redirect({ to: '/', search: { tab: 'champions' } })
     }
   },
   component: LoginPage,
@@ -62,7 +62,7 @@ function LoginPage() {
       }
       queryClient.setQueryData(currentUserQueryOptions().queryKey, result.user)
       await router.invalidate()
-      await router.navigate({ to: '/' })
+      await router.navigate({ to: '/', search: { tab: 'champions' } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign in.')
     } finally {

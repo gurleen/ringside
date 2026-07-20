@@ -80,6 +80,7 @@ function NavLinks({
       <Link
         to="/"
         preload="render"
+        search={{ tab: 'champions' }}
         activeOptions={{ exact: true }}
         activeProps={{ className: 'text-foreground font-medium' }}
         className={linkClassName}
@@ -178,7 +179,11 @@ function RootComponent() {
         <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 md:gap-6">
             <MobileNav />
-            <Link to="/" className="flex items-center gap-2 font-bold">
+            <Link
+              to="/"
+              search={{ tab: 'champions' }}
+              className="flex items-center gap-2 font-bold"
+            >
               <Swords className="size-5 text-primary" />
               <span>Ringside</span>
             </Link>

@@ -204,7 +204,7 @@ export async function performExchangeAuthCode(data: {
   }
 
   if (next === '/') {
-    throw redirect({ to: '/' })
+    throw redirect({ to: '/', search: { tab: 'champions' } })
   }
 
   throw redirect({ href: next })

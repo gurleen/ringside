@@ -23,7 +23,7 @@ import { Label } from '#/components/ui/label'
 export const Route = createFileRoute('/signup')({
   beforeLoad: ({ context }) => {
     if (context.user) {
-      throw redirect({ to: '/' })
+      throw redirect({ to: '/', search: { tab: 'champions' } })
     }
   },
   component: SignupPage,
@@ -62,7 +62,7 @@ function SignupPage() {
 
       queryClient.setQueryData(currentUserQueryOptions().queryKey, result.user)
       await router.invalidate()
-      await router.navigate({ to: '/' })
+      await router.navigate({ to: '/', search: { tab: 'champions' } })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign up.')
     } finally {

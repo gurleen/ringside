@@ -34,7 +34,7 @@ export function UserMenu({ user }: { user: AuthUser }) {
       await signOut()
       queryClient.setQueryData(currentUserQueryOptions().queryKey, null)
       await router.invalidate()
-      await router.navigate({ to: '/' })
+      await router.navigate({ to: '/', search: { tab: 'champions' } })
     } finally {
       setPending(false)
     }

@@ -10,8 +10,23 @@ import { formatEventDate } from '#/routes/events/index'
 import { Avatar, AvatarFallback, AvatarImage } from '#/components/ui/avatar'
 import { Badge } from '#/components/ui/badge'
 import { Skeleton } from '#/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '#/components/ui/tabs'
+import { cn } from '#/lib/utils'
+
+type HomeTab = 'champions' | 'events'
+
+function parseHomeTab(value: unknown): HomeTab {
+  return value === 'events' ? 'events' : 'champions'
+}
+
+interface HomeSearch {
+  tab: HomeTab
+}
 
 export const Route = createFileRoute('/')({
+  validateSearch: (search: Record<string, unknown>): HomeSearch => ({
+    tab: parseHomeTab(search.tab),
+  }),
   loader: async ({ context }) => {
     await Promise.all([
       context.queryClient.ensureQueryData(worldChampionsQueryOptions()),
@@ -78,6 +93,8 @@ function Hero() {
 }
 
 function Home() {
+  const navigate = Route.useNavigate()
+  const { tab } = Route.useSearch()
   const { data: championRows } = useSuspenseQuery(worldChampionsQueryOptions())
   const { data: events } = useSuspenseQuery(recentEventsQueryOptions())
 
@@ -87,56 +104,85 @@ function Home() {
     <div className="space-y-10">
       <Hero />
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Trophy className="size-5 text-amber-500" />
-            <h2 className="text-xl font-semibold">Current champions</h2>
-          </div>
-          {!hasChampions ? (
-            <p className="text-sm text-muted-foreground">
-              No active title reigns on record.
-            </p>
-          ) : (
-            <div className="divide-y rounded-lg border">
-              {championRows.map((row) => (
-                <ChampionGridRow key={row.label} row={row} />
-              ))}
-            </div>
-          )}
-        </section>
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          void navigate({
+            search: (prev) => ({ ...prev, tab: parseHomeTab(value) }),
+            resetScroll: false,
+          })
+        }}
+        className="gap-4"
+      >
+        <TabsList className="grid h-10 w-full grid-cols-2 lg:hidden">
+          <TabsTrigger value="champions" className="gap-1.5">
+            <Trophy className="size-4 text-amber-500" />
+            Champions
+          </TabsTrigger>
+          <TabsTrigger value="events" className="gap-1.5">
+            <CalendarDays className="size-4" />
+            Events
+          </TabsTrigger>
+        </TabsList>
 
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="size-5 text-muted-foreground" />
-            <h2 className="text-xl font-semibold">Recent events</h2>
-          </div>
-          {events.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No recent events on record.
-            </p>
-          ) : (
-            <div className="divide-y rounded-lg border">
-              {events.map((event) => (
-                <RecentEventRow key={event.id} event={event} />
-              ))}
-            </div>
-          )}
-          <Link
-            to="/events"
-            search={{
-              q: '',
-              page: 1,
-              future: false,
-              promotion: '',
-              sort: 'date_desc',
-            }}
-            className="inline-block text-sm text-primary hover:underline"
+        <div className="grid gap-8 lg:grid-cols-2">
+          <section
+            className={cn(
+              'space-y-4',
+              tab !== 'champions' && 'hidden lg:block',
+            )}
           >
-            Browse all events
-          </Link>
-        </section>
-      </div>
+            <div className="hidden items-center gap-2 lg:flex">
+              <Trophy className="size-5 text-amber-500" />
+              <h2 className="text-xl font-semibold">Current champions</h2>
+            </div>
+            {!hasChampions ? (
+              <p className="text-sm text-muted-foreground">
+                No active title reigns on record.
+              </p>
+            ) : (
+              <div className="divide-y rounded-lg border">
+                {championRows.map((row) => (
+                  <ChampionGridRow key={row.label} row={row} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section
+            className={cn('space-y-4', tab !== 'events' && 'hidden lg:block')}
+          >
+            <div className="hidden items-center gap-2 lg:flex">
+              <CalendarDays className="size-5 text-muted-foreground" />
+              <h2 className="text-xl font-semibold">Recent events</h2>
+            </div>
+            {events.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No recent events on record.
+              </p>
+            ) : (
+              <div className="divide-y rounded-lg border">
+                {events.map((event) => (
+                  <RecentEventRow key={event.id} event={event} />
+                ))}
+              </div>
+            )}
+            <Link
+              to="/events"
+              search={{
+                q: '',
+                page: 1,
+                future: false,
+                promotion: '',
+                sort: 'date_desc',
+              }}
+              className="inline-block text-sm text-primary hover:underline"
+            >
+              Browse all events
+            </Link>
+          </section>
+        </div>
+      </Tabs>
     </div>
   )
 }
@@ -146,42 +192,45 @@ function HomeSkeleton() {
     <div className="space-y-10">
       <Hero />
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Trophy className="size-5 text-amber-500" />
-            <h2 className="text-xl font-semibold">Current champions</h2>
-          </div>
-          <div className="divide-y rounded-lg border">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="space-y-3 p-3">
-                <Skeleton className="h-4 w-20" />
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Skeleton className="h-14 w-full" />
-                  <Skeleton className="h-14 w-full" />
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-full lg:hidden" />
+        <div className="grid gap-8 lg:grid-cols-2">
+          <section className="space-y-4">
+            <div className="hidden items-center gap-2 lg:flex">
+              <Trophy className="size-5 text-amber-500" />
+              <h2 className="text-xl font-semibold">Current champions</h2>
+            </div>
+            <div className="divide-y rounded-lg border">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-3 p-3">
+                  <Skeleton className="h-4 w-20" />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-14 w-full" />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
 
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="size-5 text-muted-foreground" />
-            <h2 className="text-xl font-semibold">Recent events</h2>
-          </div>
-          <div className="divide-y rounded-lg border">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between gap-4 p-3"
-              >
-                <Skeleton className="h-5 w-52" />
-                <Skeleton className="h-4 w-24" />
-              </div>
-            ))}
-          </div>
-        </section>
+          <section className="hidden space-y-4 lg:block">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="size-5 text-muted-foreground" />
+              <h2 className="text-xl font-semibold">Recent events</h2>
+            </div>
+            <div className="divide-y rounded-lg border">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between gap-4 p-3"
+                >
+                  <Skeleton className="h-5 w-52" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   )
