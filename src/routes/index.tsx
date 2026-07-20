@@ -47,6 +47,22 @@ function initials(name: string | null): string {
   return letters.toUpperCase() || '?'
 }
 
+/** Compact labels for the curated home titles — full name stays on the title page. */
+const SHORT_TITLE_LABELS: Record<string, string> = {
+  '4331': 'World Championship',
+  '4370': "Women's World Championship",
+  '145': 'IWGP Heavyweight Championship',
+  '1577': 'World of Stardom Championship',
+  '6069': 'World Heavyweight Championship',
+  '3116': "Women's World Championship",
+  '20': 'Undisputed Championship',
+  '2906': "Women's Championship",
+}
+
+function shortTitleLabel(titleId: string, titleName: string): string {
+  return SHORT_TITLE_LABELS[titleId] ?? titleName
+}
+
 function Hero() {
   return (
     <section className="space-y-2">
@@ -138,11 +154,11 @@ function HomeSkeleton() {
           </div>
           <div className="divide-y rounded-lg border">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="space-y-2 p-3">
+              <div key={i} className="space-y-3 p-3">
                 <Skeleton className="h-4 w-20" />
-                <div className="grid grid-cols-2 gap-3">
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Skeleton className="h-14 w-full" />
+                  <Skeleton className="h-14 w-full" />
                 </div>
               </div>
             ))}
@@ -173,11 +189,12 @@ function HomeSkeleton() {
 
 function ChampionGridRow({ row }: { row: TopChampionsRow }) {
   return (
-    <div className="space-y-2 p-3">
+    <div className="space-y-3 p-3">
       <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
         {row.label}
       </p>
-      <div className="grid grid-cols-2 gap-3">
+      {/* Stack on phones — side-by-side only when there is room for both names. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <ChampionCell entry={row.men} />
         <ChampionCell entry={row.women} />
       </div>
@@ -188,7 +205,7 @@ function ChampionGridRow({ row }: { row: TopChampionsRow }) {
 function ChampionCell({ entry }: { entry: WorldChampionEntry | null }) {
   if (!entry) {
     return (
-      <div className="flex min-h-16 items-center justify-center rounded-md border border-dashed px-2 py-3 text-xs text-muted-foreground">
+      <div className="flex min-h-14 items-center justify-center rounded-md border border-dashed px-3 py-3 text-xs text-muted-foreground">
         Vacant
       </div>
     )
@@ -196,12 +213,13 @@ function ChampionCell({ entry }: { entry: WorldChampionEntry | null }) {
 
   const since = formatReignDate(entry.fromDate)
   const primaryChampion = entry.champions[0]
+  const titleLabel = shortTitleLabel(entry.titleId, entry.titleName)
 
   return (
-    <div className="flex min-w-0 items-start gap-2 rounded-md border px-2 py-2">
+    <div className="flex min-w-0 items-center gap-3 rounded-md border px-3 py-2.5">
       <ChampionAvatar champion={primaryChampion} />
-      <div className="min-w-0 flex-1 space-y-1">
-        <p className="truncate text-sm font-medium">
+      <div className="min-w-0 flex-1">
+        <p className="text-sm leading-snug font-medium">
           {entry.champions.map((champion, i) => (
             <Fragment key={`${champion.wrestlerId ?? champion.name}-${i}`}>
               {i > 0 && ' & '}
@@ -220,34 +238,32 @@ function ChampionCell({ entry }: { entry: WorldChampionEntry | null }) {
             </Fragment>
           ))}
         </p>
-        <div className="flex items-center gap-1.5">
-          {entry.titleImageUrl ? (
-            <img
-              src={entry.titleImageUrl}
-              alt=""
-              referrerPolicy="no-referrer"
-              className="h-8 w-auto shrink-0 object-contain"
-            />
-          ) : (
-            <Trophy className="size-4 shrink-0 text-amber-500" />
-          )}
-          <Link
-            to="/titles/$titleId"
-            params={{ titleId: entry.titleId }}
-            search={{ tab: 'reigns', page: 1 }}
-            className="truncate text-xs text-muted-foreground hover:underline"
-          >
-            {entry.titleName}
-          </Link>
-        </div>
+        <Link
+          to="/titles/$titleId"
+          params={{ titleId: entry.titleId }}
+          search={{ tab: 'reigns', page: 1 }}
+          className="mt-0.5 block text-xs leading-snug text-muted-foreground hover:underline"
+        >
+          {titleLabel}
+        </Link>
         {since && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
             since {since}
             {entry.daysHeld != null &&
               ` · ${numberFmt.format(entry.daysHeld)} days`}
           </p>
         )}
       </div>
+      {entry.titleImageUrl ? (
+        <img
+          src={entry.titleImageUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="h-10 w-auto shrink-0 object-contain sm:h-11"
+        />
+      ) : (
+        <Trophy className="size-5 shrink-0 text-amber-500" />
+      )}
     </div>
   )
 }
@@ -259,14 +275,14 @@ function ChampionAvatar({
 }) {
   if (!champion) {
     return (
-      <Avatar className="size-12 shrink-0">
+      <Avatar className="size-11 shrink-0 sm:size-12">
         <AvatarFallback>?</AvatarFallback>
       </Avatar>
     )
   }
 
   return (
-    <Avatar className="size-12 shrink-0">
+    <Avatar className="size-11 shrink-0 sm:size-12">
       {champion.imageUrl ? (
         <AvatarImage
           src={champion.imageUrl}
