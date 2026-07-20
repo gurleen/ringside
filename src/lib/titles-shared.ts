@@ -1,6 +1,7 @@
 import {
   cagematchTextToIso,
   isDarkMatch,
+  isHouseShow,
   isTitleOutcomeMatch,
   type TitleOutcomeSide,
 } from '#/lib/matches-shared'
@@ -9,11 +10,13 @@ export function isTitleDefenseRow(input: {
   result: string | null
   titleChange: boolean | null
   matchType: string | null
+  eventType?: string | null
   sides: ReadonlyArray<TitleOutcomeSide>
 }): boolean {
   if (input.result !== 'decisive') return false
   if (input.titleChange) return false
   if (isDarkMatch(input.matchType)) return false
+  if (isHouseShow(input.eventType)) return false
   return isTitleOutcomeMatch({
     titleName: 'title',
     titleChange: false,

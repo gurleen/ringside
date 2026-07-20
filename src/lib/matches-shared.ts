@@ -24,6 +24,11 @@ export function isDarkMatch(matchType: string | null): boolean {
   return matchType != null && /^dark\b/i.test(matchType.trim())
 }
 
+/** Events tagged as house shows (`events.event_type` = "House Show") — not TV canon. */
+export function isHouseShow(eventType: string | null | undefined): boolean {
+  return eventType != null && /^house show$/i.test(eventType.trim())
+}
+
 export function matchHasChampion(
   sides: ReadonlyArray<TitleOutcomeSide>,
 ): boolean {

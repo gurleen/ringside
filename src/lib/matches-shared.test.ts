@@ -3,6 +3,7 @@ import {
   cagematchTextToIso,
   countPriorWrestlerTitleReigns,
   isDarkMatch,
+  isHouseShow,
   isTitleContendershipMatch,
   isTitleOutcomeMatch,
   matchHasChampion,
@@ -20,6 +21,19 @@ describe('isDarkMatch', () => {
     expect(isDarkMatch('World Of Darkness Match')).toBe(false)
     expect(isDarkMatch('Match')).toBe(false)
     expect(isDarkMatch(null)).toBe(false)
+  })
+})
+
+describe('isHouseShow', () => {
+  test('detects House Show event types', () => {
+    expect(isHouseShow('House Show')).toBe(true)
+    expect(isHouseShow(' house show ')).toBe(true)
+  })
+
+  test('does not flag unrelated house wording', () => {
+    expect(isHouseShow('In Your House')).toBe(false)
+    expect(isHouseShow('PPV')).toBe(false)
+    expect(isHouseShow(null)).toBe(false)
   })
 })
 

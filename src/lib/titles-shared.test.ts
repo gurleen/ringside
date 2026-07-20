@@ -47,6 +47,18 @@ describe('isTitleDefenseRow', () => {
       }),
     ).toBe(false)
   })
+
+  test('rejects house show events', () => {
+    expect(
+      isTitleDefenseRow({
+        result: 'decisive',
+        titleChange: false,
+        matchType: 'Match',
+        eventType: 'House Show',
+        sides: [{ isChampion: true }, { isChampion: false }],
+      }),
+    ).toBe(false)
+  })
 })
 
 describe('eventDateInReign', () => {

@@ -14,7 +14,7 @@ import {
 import { resolveTitleImageUrls, resolveWrestlerHeadshotUrls } from '#/lib/sdh'
 import { isMatchReviewable } from '#/lib/reviews-shared'
 import { isMatchPredictable } from '#/lib/predictions-shared'
-import { isTitleContendershipMatch, isDarkMatch, isTitleOutcomeMatch, resolveWrestlerTitleReignNumber, type TitleReignRef } from '#/lib/matches-shared'
+import { isTitleContendershipMatch, isDarkMatch, isHouseShow, isTitleOutcomeMatch, resolveWrestlerTitleReignNumber, type TitleReignRef } from '#/lib/matches-shared'
 import {
   eventLockInstant,
   zonedWallTimeToInstant,
@@ -385,12 +385,15 @@ async function resolveTitleContext(
     new Set(decisiveTitleMatches.map((m) => m.event_id)),
   )
   const [eventsRes, historyRes, reignsRes] = await Promise.all([
-    supabase.from('events').select('id, event_date').in('id', eventIds),
+    supabase
+      .from('events')
+      .select('id, event_date, event_type')
+      .in('id', eventIds),
     retainedTitleIds.size > 0
       ? supabase
           .from('matches')
           .select(
-            'id, title_id, title_change, match_type, match_sides(is_champion), events(event_date)',
+            'id, title_id, title_change, match_type, match_sides(is_champion), events(event_date, event_type)',
           )
           .in('title_id', Array.from(retainedTitleIds))
           .eq('result', 'decisive')
@@ -409,8 +412,10 @@ async function resolveTitleContext(
   if (reignsRes.error) throw new Error(reignsRes.error.message)
 
   const eventDates = new Map<string, string>()
+  const eventTypes = new Map<string, string | null>()
   for (const e of eventsRes.data ?? []) {
     if (e.event_date) eventDates.set(e.id, e.event_date)
+    eventTypes.set(e.id, e.event_type)
   }
 
   type HistoryEntry = {
@@ -423,14 +428,15 @@ async function resolveTitleContext(
   for (const row of historyRes.data ?? []) {
     if (!row.title_id) continue
     const embedded = row.events
-    const date = (Array.isArray(embedded) ? embedded[0] : embedded)
-      ?.event_date
+    const event = Array.isArray(embedded) ? embedded[0] : embedded
+    const date = event?.event_date
     if (!date) continue
     const sides = row.match_sides ?? []
     const isDefense =
       !!row.title_change ||
       (!isTitleContendershipMatch(row.match_type) &&
         !isDarkMatch(row.match_type) &&
+        !isHouseShow(event?.event_type) &&
         sides.some((s) => s.is_champion === true))
     const list = historyByTitle.get(row.title_id) ?? []
     list.push({
@@ -448,6 +454,7 @@ async function resolveTitleContext(
 
     if (!m.title_change) {
       if (isDarkMatch(m.match_type)) continue
+      if (isHouseShow(eventTypes.get(m.event_id))) continue
       const history = historyByTitle.get(m.title_id!) ?? []
       // Latest title change on or before this match starts the current reign.
       let reignStart: string | null = null

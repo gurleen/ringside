@@ -105,7 +105,7 @@ Bun auto-loads `.env`; do not add `dotenv`.
   migration #18); and admin match-result RPCs (`public.admin_set_match_result`
   / `admin_clear_match_result` → `private.*`, migration #23) that rewrite
   `matches.result` + `match_sides` / participants for live PPV updates
-  (overwritten by the nightly scraper ETL). `reviews.match_reviews` and `predictions.match_predictions`
+  (overwritten by the cagematch-scraper ETL). `reviews.match_reviews` and `predictions.match_predictions`
   allow authenticated users to insert/update/delete their own rows
   (`auth.uid() = user_id`); prediction writes also require the event lock
   instant to be in the future and the match to be non-decisive. Tables added
@@ -216,8 +216,9 @@ public`; in `private` so it's off the Data API) which recomputes the home
     `matches.result` to `decisive` / `no_decision`. Thin `public.*` wrappers
     with `EXECUTE` for `authenticated` (+ `service_role`); revoked from
     `anon`. No table write RLS on wrestling match tables — RPC is the only
-    client write path. Nightly cagematch-scraper ETL hard-replaces changed
-    event subtrees, so admin marks are temporary live overrides.
+    client write path. Cagematch-scraper ETL (nightly full scrape + hourly
+    today/tomorrow refresh) hard-replaces changed event subtrees, so admin
+    marks are temporary live overrides.
 24. `admin_match_result_rescore_predictions` — the admin result RPCs now also
     reset this match's `predictions.match_predictions` rows to
     `status='pending'` / null points (via the `predictions.allow_scoring`
@@ -343,8 +344,9 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   by participant fingerprint snapshot, not bare side index.
 - **Admin live match results** write the same `matches` / `match_sides` rows
   the scraper owns (via RPC). They unlock reviews/predictions scoring
-  immediately; the nightly ETL DELETE+INSERT of a changed event subtree
-  replaces them with Cagematch data. No separate override table.
+  immediately; ETL DELETE+INSERT of a changed event subtree (nightly + hourly
+  today/tomorrow refresh) replaces them with Cagematch data. No separate
+  override table.
 - There is **no structured method-of-victory** field (pin/submission/DQ).
   Prediction v1 scores winner only (1 point); method picks are deferred.
 - **SDH vs Cagematch IDs:** never compare directly. Cagematch ids are numeric
@@ -605,10 +607,11 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   menu (`AdminMatchResultMenu`): “Set Result…” opens a modal winner picker,
   “Clear result…” confirms a reset (→ `setMatchResult` / `clearMatchResult`). The RPC
   rewrites `matches.result` + `match_sides` / participants on the live scraped
-  tables so reviews unlock and predictions score immediately. The nightly
-  cagematch-scraper ETL hard-replaces changed event subtrees afterward for
-  clean Cagematch data. `getEvent` / `getMatchSummary` use the uncached
-  Supabase client so marks are not stuck behind the edge TTL.
+  tables so reviews unlock and predictions score immediately. Cagematch-scraper
+  ETL (nightly + hourly today/tomorrow event refresh) hard-replaces changed
+  event subtrees afterward for clean Cagematch data. `getEvent` /
+  `getMatchSummary` use the uncached Supabase client so marks are not stuck
+  behind the edge TTL.
 - **Event detail** (`/events/$eventId`): builds the match card; sides are laid
   out horizontally and centered (winner side, then a "def."/"vs" connector,
   then the loser side, which is dimmed). Below `sm` the sides stack

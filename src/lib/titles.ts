@@ -693,6 +693,7 @@ type DefenseMatchRow = {
     name: string | null
     date: string | null
     event_date: string | null
+    event_type: string | null
   } | null
   match_sides: Array<{
     side_role: string
@@ -714,7 +715,7 @@ async function fetchTitleDefenseMatches(
   const { data, error } = await supabase
     .from('matches')
     .select(
-      'id, match_index, match_type, title_change, result, events(id, name, date, event_date), match_sides(side_role, side_index, is_champion, match_side_participants(participant_role, participant_id, participant_name, seq))',
+      'id, match_index, match_type, title_change, result, events(id, name, date, event_date, event_type), match_sides(side_role, side_index, is_champion, match_side_participants(participant_role, participant_id, participant_name, seq))',
     )
     .eq('title_id', titleId)
     .eq('result', 'decisive')
@@ -725,6 +726,7 @@ async function fetchTitleDefenseMatches(
       result: row.result,
       titleChange: row.title_change,
       matchType: row.match_type,
+      eventType: row.events?.event_type,
       sides: row.match_sides.map((s) => ({ isChampion: s.is_champion })),
     }),
   )
