@@ -5,6 +5,7 @@ import { Dices, LogOut, Star } from 'lucide-react'
 
 import type { AuthUser } from '#/lib/auth'
 import { currentUserQueryOptions, signOut } from '#/lib/auth'
+import { SpoilersToggle } from '#/components/spoilers-toggle'
 import { Avatar, AvatarFallback } from '#/components/ui/avatar'
 import { Badge } from '#/components/ui/badge'
 import { Button } from '#/components/ui/button'
@@ -77,6 +78,16 @@ export function UserMenu({ user }: { user: AuthUser }) {
             </span>
           </div>
         </DropdownMenuLabel>
+        <div
+          className="px-2 py-1.5"
+          // Keep the menu open while toggling Spoilers.
+          onPointerDown={(event) => event.preventDefault()}
+        >
+          <SpoilersToggle
+            id="spoilers-account"
+            className="w-full justify-between"
+          />
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link to="/reviews" search={{ page: 1 }}>

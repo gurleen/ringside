@@ -3,7 +3,7 @@ import { Label } from '#/components/ui/label'
 import { Switch } from '#/components/ui/switch'
 import { cn } from '#/lib/utils'
 
-/** Compact Spoilers switch for the header nav / hamburger sheet. */
+/** Compact Spoilers switch for the account menu / hamburger sheet. */
 export function SpoilersToggle({
   id,
   className,

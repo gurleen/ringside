@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Clock,
   ExternalLink,
+  EyeOff,
   MapPin,
   Moon,
   Pencil,
@@ -192,10 +193,13 @@ function EventDetailPage() {
   const { data: predictions } = useSuspenseQuery(
     eventPredictionsQueryOptions(eventId),
   )
+  const { spoilers } = useSpoilers()
   const [shareOpen, setShareOpen] = useState(false)
 
   const mainMatches = matches.filter((m) => !isDarkMatch(m.matchType))
   const darkMatches = matches.filter((m) => isDarkMatch(m.matchType))
+  const resultsHidden =
+    !spoilers && matches.some((m) => m.hasResult)
   const showPredictions =
     !predictionsLocked ||
     matches.some((m) => m.isPredictable) ||
@@ -302,6 +306,15 @@ function EventDetailPage() {
             {mainMatches.length === 1 ? 'match' : 'matches'}
           </span>
         </div>
+
+        {resultsHidden && (
+          <p className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+            <EyeOff className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              Match results are hidden. Turn on Spoilers to reveal winners.
+            </span>
+          </p>
+        )}
 
         {matches.length === 0 ? (
           <p className="text-sm text-muted-foreground">
