@@ -49,6 +49,7 @@ import { formatEventDate } from '#/routes/events/index'
 import { cn } from '#/lib/utils'
 import { MatchResultText } from '#/components/match-result-text'
 import { SpoilerWinner } from '#/components/spoiler-winner'
+import { useSpoilers } from '#/components/spoilers-provider'
 
 type WrestlerTab = 'profile' | 'history' | 'matches' | 'rivalries'
 
@@ -838,7 +839,7 @@ function WrestlerRivalriesTab({
   const navigate = useNavigate({ from: Route.fullPath })
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
-  const [spoilers, setSpoilers] = useState(false)
+  const { spoilers } = useSpoilers()
   const [includeOthers, setIncludeOthers] = useState(false)
 
   useEffect(() => {
@@ -1018,16 +1019,6 @@ function WrestlerRivalriesTab({
               />
               <Label htmlFor="rivalries-include-others" className="text-sm">
                 Include matches with others
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="rivalries-spoilers"
-                checked={spoilers}
-                onCheckedChange={setSpoilers}
-              />
-              <Label htmlFor="rivalries-spoilers" className="text-sm">
-                Spoilers
               </Label>
             </div>
           </div>

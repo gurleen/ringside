@@ -11,11 +11,14 @@ import { Menu, Swords } from 'lucide-react'
 import { useState } from 'react'
 
 import TanStackQueryDevtools from '../integrations/tanstack-query/devtools'
+import { SpoilersProvider } from '#/components/spoilers-provider'
+import { SpoilersToggle } from '#/components/spoilers-toggle'
 import { UserMenu } from '#/components/user-menu'
 import { Button } from '#/components/ui/button'
 import {
   Sheet,
   SheetContent,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -158,6 +161,9 @@ function MobileNav() {
             onNavigate={() => setOpen(false)}
           />
         </nav>
+        <SheetFooter className="border-t">
+          <SpoilersToggle id="spoilers-mobile" />
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   )
@@ -167,39 +173,45 @@ function RootComponent() {
   const { user } = Route.useRouteContext()
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 md:gap-6">
-          <MobileNav />
-          <Link to="/" className="flex items-center gap-2 font-bold">
-            <Swords className="size-5 text-primary" />
-            <span>Ringside</span>
-          </Link>
-          <nav className="hidden items-center gap-4 text-sm text-muted-foreground md:flex">
-            <NavLinks linkClassName="transition-colors hover:text-foreground" />
-          </nav>
-          <div className="ml-auto flex items-center gap-2">
-            {user ? (
-              <UserMenu user={user} />
-            ) : (
-              <>
-                <Button asChild variant="ghost" size="sm">
-                  <Link to="/login" search={{ error: undefined }}>
-                    Log in
-                  </Link>
-                </Button>
-                <Button asChild size="sm">
-                  <Link to="/signup">Sign up</Link>
-                </Button>
-              </>
-            )}
+    <SpoilersProvider>
+      <div className="min-h-screen bg-background text-foreground">
+        <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
+          <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 md:gap-6">
+            <MobileNav />
+            <Link to="/" className="flex items-center gap-2 font-bold">
+              <Swords className="size-5 text-primary" />
+              <span>Ringside</span>
+            </Link>
+            <nav className="hidden items-center gap-4 text-sm text-muted-foreground md:flex">
+              <NavLinks linkClassName="transition-colors hover:text-foreground" />
+            </nav>
+            <div className="ml-auto flex items-center gap-2">
+              <SpoilersToggle
+                id="spoilers-desktop"
+                className="hidden text-muted-foreground md:flex"
+              />
+              {user ? (
+                <UserMenu user={user} />
+              ) : (
+                <>
+                  <Button asChild variant="ghost" size="sm">
+                    <Link to="/login" search={{ error: undefined }}>
+                      Log in
+                    </Link>
+                  </Button>
+                  <Button asChild size="sm">
+                    <Link to="/signup">Sign up</Link>
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      </header>
-      <main className="mx-auto max-w-6xl px-4 py-8">
-        <Outlet />
-      </main>
-    </div>
+        </header>
+        <main className="mx-auto max-w-6xl px-4 py-8">
+          <Outlet />
+        </main>
+      </div>
+    </SpoilersProvider>
   )
 }
 
