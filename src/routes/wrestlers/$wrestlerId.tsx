@@ -1388,6 +1388,7 @@ function MatchSummary({
           <Link
             to="/titles/$titleId"
             params={{ titleId: match.titleId }}
+            search={{ tab: 'reigns', page: 1 }}
             className="text-xs text-muted-foreground hover:underline"
           >
             {match.titleName}

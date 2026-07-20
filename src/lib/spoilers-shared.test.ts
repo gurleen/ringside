@@ -14,6 +14,7 @@ function sampleMatch(
     titleLinkable: true,
     titleImageUrl: null,
     titleChange: true,
+    isTitleOutcome: true,
     titleDefenseNumber: null,
     winnerReignNumber: 3,
     duration: '12:34',
@@ -97,6 +98,7 @@ describe('unspoiledMatchCard', () => {
     expect(next.hasResult).toBe(false)
     expect(next.result).toBe('no_decision')
     expect(next.titleChange).toBe(false)
+    expect(next.isTitleOutcome).toBe(false)
     expect(next.winnerReignNumber).toBeNull()
     expect(next.titleDefenseNumber).toBeNull()
     expect(next.finishNote).toBeNull()

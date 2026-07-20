@@ -185,6 +185,7 @@ function ChampionRow({ entry }: { entry: WorldChampionEntry }) {
         <Link
           to="/titles/$titleId"
           params={{ titleId: entry.titleId }}
+          search={{ tab: 'reigns', page: 1 }}
           className="text-xs text-muted-foreground hover:underline"
         >
           {entry.titleName}

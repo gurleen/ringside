@@ -42,6 +42,7 @@ import {
   predictionShareEligibleMatches,
 } from '#/lib/predictions-shared'
 import { formatDeviceTime, formatVenueTime } from '#/lib/event-time'
+import { isDarkMatch } from '#/lib/matches-shared'
 import { StarRatingDisplay } from '#/components/star-rating-display'
 import { PredictionSidePicker } from '#/components/prediction-side-picker'
 import { PredictionShareDialog } from '#/components/prediction-share-dialog'
@@ -170,13 +171,6 @@ function EventDetailSkeleton() {
       </section>
     </div>
   )
-}
-
-// Matches whose type starts with the word "Dark" (e.g. "Dark Match",
-// "Dark Tag Team Match", "Dark  Match"). Excludes unrelated types that merely
-// contain the substring, like "World Of Darkness Match".
-function isDarkMatch(matchType: string | null): boolean {
-  return matchType != null && /^dark\b/i.test(matchType.trim())
 }
 
 function EventDetailPage() {
@@ -592,7 +586,9 @@ function ordinal(n: number): string {
 function TitleResultCallout({ match }: { match: MatchCardItem }) {
   const tagline = match.titleChange
     ? match.winnerReignNumber != null
-      ? `Begins ${ordinal(match.winnerReignNumber)} reign`
+      ? match.winnerReignNumber === 1
+        ? 'First reign'
+        : `Begins ${ordinal(match.winnerReignNumber)} reign`
       : null
     : match.titleDefenseNumber != null
       ? `${ordinal(match.titleDefenseNumber)} successful title defense`
@@ -633,7 +629,7 @@ function MatchMarquee({ match }: { match: MatchCardItem }) {
       )}
       <span className="text-sm font-semibold">
         {match.titleName}
-        {match.titleChange ? (
+        {match.isTitleOutcome && match.titleChange ? (
           <span className="font-normal text-muted-foreground">
             {' '}
             (title change)
@@ -650,6 +646,7 @@ function MatchMarquee({ match }: { match: MatchCardItem }) {
           <Link
             to="/titles/$titleId"
             params={{ titleId: match.titleId }}
+            search={{ tab: 'reigns', page: 1 }}
             className="transition-opacity hover:opacity-80"
           >
             {title}
@@ -747,7 +744,7 @@ function MatchCard({
               eventId={eventId}
               matchId={rawMatch.id}
               sides={rawMatch.sides}
-              isTitleMatch={!!rawMatch.titleName}
+              isTitleMatch={rawMatch.isTitleOutcome}
               titleChange={!!rawMatch.titleChange}
             />
           )}
@@ -756,7 +753,7 @@ function MatchCard({
       <CardContent className="space-y-3">
         {(match.titleName || match.matchType) && <MatchMarquee match={match} />}
 
-        {match.titleName && match.hasResult && (
+        {match.isTitleOutcome && match.hasResult && (
           <TitleResultCallout match={match} />
         )}
 

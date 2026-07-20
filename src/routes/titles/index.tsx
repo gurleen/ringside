@@ -295,6 +295,7 @@ function TitleCard({ title }: { title: EnrichedTitle }) {
     <Link
       to="/titles/$titleId"
       params={{ titleId: title.id }}
+      search={{ tab: 'reigns', page: 1 }}
       className="group block"
     >
       <Card className="h-full gap-0 overflow-hidden py-0 transition-colors group-hover:border-foreground/20">

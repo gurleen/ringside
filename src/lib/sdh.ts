@@ -11,6 +11,13 @@ export type SdhWrestlerAlignment = Tables<'sdh_wrestler_alignments'>
 export type SdhWrestlerAttribute = Tables<'sdh_wrestler_attributes'>
 export type SdhWrestlerRole = Tables<'sdh_wrestler_roles'>
 export type SdhWrestlerImage = Tables<'sdh_wrestler_images'>
+export type SdhTitle = Tables<'sdh_titles'>
+export type SdhTitleNameHistory = Tables<'sdh_title_name_history'>
+
+export interface SdhTitleProfile {
+  title: SdhTitle
+  nameHistory: Array<SdhTitleNameHistory>
+}
 
 export interface SdhWrestlerProfile {
   wrestler: SdhWrestler
@@ -162,6 +169,102 @@ export async function resolveWrestlerHeadshotUrls(
     const url = headshotBySdh.get(sdhId)
     if (url) map.set(cagematchId, url)
   }
+  return map
+}
+
+/**
+ * Load SDH title metadata and ordered name/belt-art history for the
+ * highest-confidence crosswalk match.
+ */
+export async function getSdhTitleProfile(
+  cagematchTitleId: string,
+): Promise<SdhTitleProfile | null> {
+  const supabase = getCachedSupabaseServerClient()
+  const { data: crosswalk, error: crosswalkError } = await supabase
+    .from('title_crosswalk')
+    .select('sdh_id')
+    .eq('cagematch_id', cagematchTitleId)
+    .gte('confidence', SDH_MIN_CONFIDENCE)
+    .order('confidence', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (crosswalkError) throw new Error(crosswalkError.message)
+  if (!crosswalk) return null
+
+  const [titleRes, nameHistoryRes] = await Promise.all([
+    supabase
+      .from('sdh_titles')
+      .select('*')
+      .eq('id', crosswalk.sdh_id)
+      .maybeSingle(),
+    supabase
+      .from('sdh_title_name_history')
+      .select('*')
+      .eq('title_id', crosswalk.sdh_id)
+      .order('seq'),
+  ])
+  if (titleRes.error) throw new Error(titleRes.error.message)
+  if (nameHistoryRes.error) throw new Error(nameHistoryRes.error.message)
+  if (!titleRes.data) return null
+
+  return {
+    title: titleRes.data,
+    nameHistory: nameHistoryRes.data ?? [],
+  }
+}
+
+/**
+ * Resolve SDH full-body portrait URLs for Cagematch wrestler ids via
+ * `wrestler_crosswalk` → `sdh_wrestlers.image_url`. Falls back to the latest
+ * gallery headshot when the full-body render is missing.
+ */
+export async function resolveWrestlerPortraitUrls(
+  wrestlerIds: ReadonlyArray<string>,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (wrestlerIds.length === 0) return map
+
+  const supabase = getCachedSupabaseServerClient()
+  const { data: crosswalk, error: xErr } = await supabase
+    .from('wrestler_crosswalk')
+    .select('cagematch_id, sdh_id, confidence')
+    .in('cagematch_id', wrestlerIds)
+    .gte('confidence', SDH_MIN_CONFIDENCE)
+  if (xErr) throw new Error(xErr.message)
+
+  const sdhByCagematch = new Map<string, string>()
+  for (const row of [...crosswalk].sort(
+    (a, b) => b.confidence - a.confidence,
+  )) {
+    if (!sdhByCagematch.has(row.cagematch_id)) {
+      sdhByCagematch.set(row.cagematch_id, row.sdh_id)
+    }
+  }
+  if (sdhByCagematch.size === 0) return map
+
+  const { data: wrestlers, error: wErr } = await supabase
+    .from('sdh_wrestlers')
+    .select('id, image_url')
+    .in('id', Array.from(new Set(sdhByCagematch.values())))
+  if (wErr) throw new Error(wErr.message)
+
+  const portraitBySdh = new Map<string, string>()
+  for (const w of wrestlers ?? []) {
+    if (w.image_url) portraitBySdh.set(w.id, w.image_url)
+  }
+
+  const missing: Array<string> = []
+  for (const [cagematchId, sdhId] of sdhByCagematch) {
+    const url = portraitBySdh.get(sdhId)
+    if (url) map.set(cagematchId, url)
+    else missing.push(cagematchId)
+  }
+
+  if (missing.length > 0) {
+    const gallery = await resolveWrestlerHeadshotUrls(missing)
+    for (const [id, url] of gallery) map.set(id, url)
+  }
+
   return map
 }
 

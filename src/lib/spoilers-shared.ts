@@ -12,6 +12,7 @@ export function unspoiledMatchCard(match: MatchCardItem): MatchCardItem {
     ...match,
     hasResult: false,
     titleChange: false,
+    isTitleOutcome: false,
     titleDefenseNumber: null,
     winnerReignNumber: null,
     finishNote: null,

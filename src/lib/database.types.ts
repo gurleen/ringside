@@ -963,6 +963,150 @@ export type Database = {
         }
         Relationships: []
       }
+      mv_title_reign_stats: {
+        Row: {
+          reign_id: string
+          title_id: string
+          reign_number: number
+          from_date: string | null
+          to_date: string | null
+          duration_days: number | null
+          team_name: string | null
+          from_date_parsed: string | null
+          to_date_parsed: string | null
+          champions: Json
+          defense_count: number
+          active: boolean
+        }
+        Insert: {
+          reign_id: string
+          title_id: string
+          reign_number: number
+          from_date?: string | null
+          to_date?: string | null
+          duration_days?: number | null
+          team_name?: string | null
+          from_date_parsed?: string | null
+          to_date_parsed?: string | null
+          champions?: Json
+          defense_count?: number
+          active?: boolean
+        }
+        Update: {
+          reign_id?: string
+          title_id?: string
+          reign_number?: number
+          from_date?: string | null
+          to_date?: string | null
+          duration_days?: number | null
+          team_name?: string | null
+          from_date_parsed?: string | null
+          to_date_parsed?: string | null
+          champions?: Json
+          defense_count?: number
+          active?: boolean
+        }
+        Relationships: []
+      }
+      mv_title_stats: {
+        Row: {
+          title_id: string
+          reign_count: number
+          total_defenses: number
+          unique_champions: number
+          avg_reign_days: number | null
+          active: boolean
+          current_reign_id: string | null
+          longest_reign_id: string | null
+          longest_reign_number: number | null
+          longest_reign_days: number | null
+          longest_reign_champions: Json
+          shortest_reign_id: string | null
+          shortest_reign_number: number | null
+          shortest_reign_days: number | null
+          shortest_reign_champions: Json
+          most_defenses_reign_id: string | null
+          most_defenses_reign_number: number | null
+          most_defenses_count: number | null
+          most_defenses_champions: Json
+          most_reigns_wrestler_id: string | null
+          most_reigns_wrestler_name: string | null
+          most_reigns_count: number | null
+          most_reigns_total_days: number | null
+          most_reigns_total_defenses: number | null
+          most_days_wrestler_id: string | null
+          most_days_wrestler_name: string | null
+          most_days_total: number | null
+          most_days_reigns_held: number | null
+          most_days_total_defenses: number | null
+          top_holders: Json
+        }
+        Insert: {
+          title_id: string
+          reign_count?: number
+          total_defenses?: number
+          unique_champions?: number
+          avg_reign_days?: number | null
+          active?: boolean
+          current_reign_id?: string | null
+          longest_reign_id?: string | null
+          longest_reign_number?: number | null
+          longest_reign_days?: number | null
+          longest_reign_champions?: Json
+          shortest_reign_id?: string | null
+          shortest_reign_number?: number | null
+          shortest_reign_days?: number | null
+          shortest_reign_champions?: Json
+          most_defenses_reign_id?: string | null
+          most_defenses_reign_number?: number | null
+          most_defenses_count?: number | null
+          most_defenses_champions?: Json
+          most_reigns_wrestler_id?: string | null
+          most_reigns_wrestler_name?: string | null
+          most_reigns_count?: number | null
+          most_reigns_total_days?: number | null
+          most_reigns_total_defenses?: number | null
+          most_days_wrestler_id?: string | null
+          most_days_wrestler_name?: string | null
+          most_days_total?: number | null
+          most_days_reigns_held?: number | null
+          most_days_total_defenses?: number | null
+          top_holders?: Json
+        }
+        Update: {
+          title_id?: string
+          reign_count?: number
+          total_defenses?: number
+          unique_champions?: number
+          avg_reign_days?: number | null
+          active?: boolean
+          current_reign_id?: string | null
+          longest_reign_id?: string | null
+          longest_reign_number?: number | null
+          longest_reign_days?: number | null
+          longest_reign_champions?: Json
+          shortest_reign_id?: string | null
+          shortest_reign_number?: number | null
+          shortest_reign_days?: number | null
+          shortest_reign_champions?: Json
+          most_defenses_reign_id?: string | null
+          most_defenses_reign_number?: number | null
+          most_defenses_count?: number | null
+          most_defenses_champions?: Json
+          most_reigns_wrestler_id?: string | null
+          most_reigns_wrestler_name?: string | null
+          most_reigns_count?: number | null
+          most_reigns_total_days?: number | null
+          most_reigns_total_defenses?: number | null
+          most_days_wrestler_id?: string | null
+          most_days_wrestler_name?: string | null
+          most_days_total?: number | null
+          most_days_reigns_held?: number | null
+          most_days_total_defenses?: number | null
+          top_holders?: Json
+        }
+        Relationships: []
+      }
       wrestler_attributes: {
         Row: {
           attr_type: string

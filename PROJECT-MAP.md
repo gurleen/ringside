@@ -231,6 +231,19 @@ public`; in `private` so it's off the Data API) which recomputes the home
     `matches.title_change` alongside `result='decisive'` so live title
     matches can show AND NEW! / AND STILL!. Clear also resets
     `title_change` to false.
+26. `title_stats_materialized_views` — `public.cagematch_text_to_date(text)`
+    helper; materialized views `mv_title_reign_stats` (per-reign defense
+    counts + champion snapshots) and `mv_title_stats` (per-title aggregates:
+    longest/shortest reign, most defenses in a reign, most times held, most
+    combined days held, top-10 holders JSON). `private.refresh_title_stats()`
+    refreshes both MVs. `SELECT` granted to `anon`/`authenticated`.
+27. `title_stats_refresh_hook` — `private.refresh_dashboard_cache()` now calls
+    `private.refresh_title_stats()` after each 10-minute cache rebuild so title
+    stats stay in sync with scraper/ETL updates.
+28. `title_stats_exclude_dark_matches` — adds `public.is_dark_match(text)`
+    (mirrors app `isDarkMatch`: `/^dark\\b/i` on trimmed `match_type`);
+    recreates `mv_title_reign_stats` / `mv_title_stats` so defense counts skip
+    dark matches (e.g. "Dark Match", "Dark Tag Team Match").
 
 ## 6. Data model
 
@@ -259,6 +272,8 @@ Primary/foreign keys and approximate row counts:
 | `titles`                    | 66    | PK `id` (varchar). `name`; `promotion` = a promotion **id** (varchar, nullable).                                                                                                                                                                                                                                                        |
 | `title_reigns`              | ~2.4k | PK `id` (varchar, `<titleId>-<n>`). FK `title_id` → `titles.id`. `reign_number`, `from_date`/`to_date` (text `DD.MM.YYYY`), `duration_days`, `location`, optional `team_id`/`team_name`.                                                                                                                                                |
 | `title_reign_champions`     | ~3k   | PK (`title_reign_id`,`seq`). FK → `title_reigns.id`. `wrestler_id` (nullable), `wrestler_name`, `reign_count`.                                                                                                                                                                                                                          |
+| `mv_title_reign_stats`      | ~2.4k | Materialized view (refreshed every 10 min). Per-reign defense counts (same rules as app: decisive, non–title-change, champion flagged, excludes dark matches via `is_dark_match()` and contendership match types) + champion JSON. Built on `title_reigns`.                                                                                |
+| `mv_title_stats`            | ~170  | Materialized view (refreshed every 10 min). One row per title with reign/defense totals, record reigns (longest/shortest/most defenses), record holders (most reigns/most days), and `top_holders` JSON (top 10 by reigns held).                                                                                                        |
 | `wrestler_crosswalk`        | ~591  | PK (`cagematch_id`,`sdh_id`). Maps Cagematch `wrestlers.id` ↔ SDH slug. `match_method` + `confidence` (0.6–1.0).                                                                                                                                                                                                                        |
 | `title_crosswalk`           | 49    | Same shape for `titles.id` ↔ `sdh_titles.id`.                                                                                                                                                                                                                                                                                           |
 | `sdh_wrestlers`             | ~1.6k | Smackdown Hotel wrestlers (slug PK). Includes `image_url` (full-body render).                                                                                                                                                                                                                                                           |
@@ -314,6 +329,12 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   `matches.title_id` + `title_change = true` + `events.date` =
   `title_reigns.from_date` (both text `DD.MM.YYYY`). When multiple matches
   share a date, prefer the one whose winners overlap the reign's champions.
+- Matches can carry a `title_id` without deciding the championship (contendership,
+  eliminator, qualifier, tournament rounds, etc.). `isTitleOutcomeMatch` in
+  `matches-shared.ts` gates AND NEW!/AND STILL! and defense counts: title
+  change, or a defending champion (`match_sides.is_champion`) and not
+  contendership-style `match_type` naming. Dark matches (`match_type` starts
+  with "Dark") are excluded from title-defense lists and defense numbering.
 - A reviewable match has `matches.result = 'decisive'` and both `winner` and
   `loser` rows in `match_sides`. Scheduled/unresolved matches use
   `result = 'no_decision'` (or occasionally `unknown`) with only `side` rows.
@@ -419,16 +440,18 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
 | `lib/supabase-auth.server.ts`              | Cookie-backed SSR Auth client (`@supabase/ssr`). Server-only.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `lib/auth.ts` / `lib/auth.server.ts`       | Auth server fns (`getCurrentUser`, `signUp`, `signIn`, `signOut`, `checkUsernameAvailable`, `exchangeAuthCode`) + server helpers; `AuthUser` carries `isAdmin` (from `profiles.is_admin`); `currentUserQueryOptions()` persistently caches the root Auth lookup and mutations update it explicitly.                                                                                                                                                                                                                                                                                 |
 | `lib/event-time.ts`                        | Pure client-safe time helpers: `zonedWallTimeToInstant`, `eventLockInstant` (admin start or midnight `America/New_York`), `formatVenueTime` (SSR-safe venue-zone label), `formatDeviceTime` (browser-only viewer-zone label, null when it matches the venue zone).                                                                                                                                                                                                                                                                                                                  |
+| `lib/matches-shared.ts`                  | Client-safe match classification: `isTitleContendershipMatch`, `isDarkMatch`, `matchHasChampion`, `isTitleOutcomeMatch`, plus reign helpers (`cagematchTextToIso`, `resolveWrestlerTitleReignNumber` — infers 1st reign when Cagematch omits `reign_count`). Used by event cards and `resolveTitleContext`. |
 | `lib/events.server.ts`                     | Admin-scoped writes: `performUpdateEventTime` (Auth client; HH:MM(:SS) + IANA zone); `performSetMatchResult` / `performClearMatchResult` (Auth client → `admin_*_match_result` RPCs; set also scores event predictions). All require `isAdmin`.                                                                                                                                                                                                                                                                                                                                   |
 | `lib/database.types.ts`                    | Generated DB types (`Database`, `Tables<>`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `lib/promotions.ts`                        | Promotion abbreviation data layer: `listPromotionAbbrs` + `promotionAbbrsQueryOptions()` (Infinity stale/gc; root-prefetched), `getPromotionResolver()` / `promotionLabel()` (abbr ?? name ?? id from `promotion_abbr`).                                                                                                                                                                                                                                                                                                                                                           |
 | `lib/wrestling.ts`                         | Server fns + query options: wrestler list/detail (including optional complete `sdh` profile), wrestler match history (`listWrestlerMatches`, paginated by `event_date` desc), and adjacent bouts (`getWrestlerAdjacentMatches`: most recent past/today + soonest future, dated events only). Exports match collect/hydrate helpers used by rivalries.                                                                                                                                                                                                                              |
 | `lib/rivalries-shared.ts` / `rivalries.ts` | All-time rivalry helpers + server fns: client-safe key parse/`rivalryIdsFromMatchSides` (2–4 sides, all wrestlers linkable); `getRivalry` + `listRivalryMatches` (intersect participation → exact wrestler-id set by default, or include matches with additional wrestlers → paginate/hydrate); query options `rivalryQueryOptions` / `rivalryMatchesQueryOptions`. |
-| `lib/events.ts`                            | Server fns + query options: event list (search/paginate/`future`/`promotion` filter), recent past events (`getRecentEvents`, dashboard), distinct event promotions (`listEventPromotions`), event detail with full match card (match card exposes `titleId`/`titleLinkable`/`titleImageUrl` plus `hasResult` / `isPredictable`; detail also returns `predictionsLockAt` / `predictionsLocked`; `getEvent` / `getMatchSummary` use uncached Supabase); admin `updateEventTime` / `setMatchResult` / `clearMatchResult` (→ `events.server.ts`). Re-exports `getPromotionResolver` from `promotions.ts`. Event list rows carry `hasOccurred` (start-time instant when set, else any decisive match via `isMatchReviewable`, else null), attached after the cache/live read so `events_default_page` stays valid. |
+| `lib/events.ts`                            | Server fns + query options: event list (search/paginate/`future`/`promotion` filter), recent past events (`getRecentEvents`, dashboard), distinct event promotions (`listEventPromotions`), event detail with full match card (match card exposes `titleId`/`titleLinkable`/`titleImageUrl`, `isTitleOutcome`, plus `hasResult` / `isPredictable`; detail also returns `predictionsLockAt` / `predictionsLocked`; `getEvent` / `getMatchSummary` use uncached Supabase); admin `updateEventTime` / `setMatchResult` / `clearMatchResult` (→ `events.server.ts`). Re-exports `getPromotionResolver` from `promotions.ts`. Event list rows carry `hasOccurred` (start-time instant when set, else any decisive match via `isMatchReviewable`, else null), attached after the cache/live read so `events_default_page` stays valid. |
 | `lib/reviews.ts` / `lib/reviews.server.ts` | Match review server fns + query options: batched per-match averages (`getMatchReviewSummaries`), paginated match reviews (`listMatchReviews`, usernames via `profiles`), paginated user reviews (`listUserReviews` with match/event context), create/update/delete (Auth client + RLS); creates verify the match has a decisive result before writing. `reviews-shared.ts` holds client-safe constants and the shared result-eligibility predicate.                                                                                                                                 |
 | `lib/predictions.ts` / `.server.ts`        | Match prediction server fns + query options: per-event user picks (`listEventPredictions`), paginated user predictions (`listUserPredictions`), all-time leaderboard (`getLeaderboard`), upsert/delete until lock, lazy `scoreEventPredictions` RPC. `predictions-shared.ts` holds `isMatchPredictable`, participant fingerprint/snapshot helpers, `pickLabel`/`sideLabel`/`resolvePickedSide`, complete-slate helpers (`hasCompletePredictionSlate`), and `PREDICTION_POINTS_WINNER` (1).                                                                                                                                                                                                  |
-| `lib/titles.ts`                            | Server fns + query options: title list (`listTitles`, search/paginate/`promotion`/`status` filter, with reign counts + active flag + optional SDH `imageUrl`), distinct title promotions (`listTitlePromotions`), title detail (`getTitle`, reign history with linkable champions + optional title-change match joined by start date + SDH belt art), and reigning world champions (`getWorldChampions`, dashboard; titles whose name matches “World”/“Undisputed” with an active reign). Reuses `getPromotionResolver` from `promotions.ts` and `resolveTitleImageUrls` from `sdh.ts`. |
-| `lib/sdh.ts`                               | Typed SDH crosswalk helpers (`confidence >= 0.7`): `getSdhWrestlerProfile` loads the highest-confidence wrestler match plus ordered name, promotion/brand, alignment, attribute, role, and image collections; `resolveTitleImageUrls` maps Cagematch title ids to belt art; `resolveWrestlerHeadshotUrls` maps Cagematch wrestler ids to the latest gallery headshot (lowest `seq` = most recent).                                                                                                                                                                                  |
+| `lib/titles-shared.ts`                     | Client-safe title reign helpers: `isTitleDefenseRow` (excludes dark matches), `eventDateInReign`, `formatChampionReignLabel`, `formatDefenseCountLabel`. |
+| `lib/titles.ts`                            | Server fns + query options: title list (`listTitles`, search/paginate/`promotion`/`status` filter, with reign counts + active flag + optional SDH `imageUrl`), distinct title promotions (`listTitlePromotions`), title detail header (`getTitle` — metadata + SDH profile), paginated reign history (`listTitleReigns`, page size 10), title stats from `mv_title_stats` (`getTitleStats`), lazy `listTitleReignDefenses` (per-reign defense match list), and reigning world champions (`getWorldChampions`, dashboard). Reuses `getPromotionResolver`, `resolveTitleImageUrls`, and `matches-shared` reign inference. |
+| `lib/sdh.ts`                               | Typed SDH crosswalk helpers (`confidence >= 0.7`): `getSdhWrestlerProfile` loads the highest-confidence wrestler match plus ordered name, promotion/brand, alignment, attribute, role, and image collections; `getSdhTitleProfile` loads belt art + ordered `sdh_title_name_history` for a Cagematch title id; `resolveTitleImageUrls` maps Cagematch title ids to belt art; `resolveWrestlerHeadshotUrls` maps Cagematch wrestler ids to the latest gallery headshot (lowest `seq` = most recent); `resolveWrestlerPortraitUrls` maps to `sdh_wrestlers.image_url` full-body renders with gallery fallback.                                                                                                                                                                                  |
 | `lib/share-image.ts`                       | `getWrestlerHeadshotDataUrls` + `getTitleImageDataUrls` server fns (+ query options): fetch up to 48 SDH headshots / belt-art images server-side (ids resolved via crosswalk, never raw URLs) and return base64 data URLs so the share-card `html-to-image` export never fetches cross-origin. Used by review (≤4) and prediction (full event slate) share cards.                                                                                                                                                                                                                                                          |
 | `lib/share-card-export.ts`                 | Client-safe PNG export helpers shared by review/prediction share dialogs: `SHARE_SIZE`/`PREVIEW_SIZE`, `exportNodeToPngBlob`, `downloadPngBlob`, Safari-safe `copyPngBlob`, `shareFilename`.                                                                                                                                                                                                                                                                                                                                                                                      |
 | `routes/__root.tsx`                        | Root document + header/nav; `beforeLoad` ensures the query-cached Auth user and promotion abbreviations (`promotionAbbrsQueryOptions`); Log in / Sign up or profile menu. Primary nav destinations preload on render. Nav links are inline on `md+` and collapse into a hamburger-triggered left `Sheet` on mobile (shared `NavLinks`; sheet closes on navigation). Global **Spoilers** switch (desktop header + mobile sheet footer) via `SpoilersProvider` / `SpoilersToggle`.                                                                                                                                                                                                               |
@@ -455,7 +478,7 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
 | `routes/predictions/index.tsx`             | “My Predictions” (`?page=`): auth-gated list of the signed-in user’s picks with event/match context + status.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `routes/leaderboard/index.tsx`             | Public all-time prediction points table (`?page=`): rank, username, points, correct/incorrect counts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `routes/titles/index.tsx`                  | Title card grid (search, pagination, promotion filter, Active/Inactive status filter; image placeholder + badges).                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `routes/titles/$titleId.tsx`               | Title detail: header + reign history (newest first) with linkable champions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `routes/titles/$titleId.tsx`               | Title detail (`?tab=reigns|details|history&page=`): header + **Reigns** tab (paginated reign history), **Details** tab (aggregated stats from `mv_title_stats`), and **Title history** tab (SDH name/belt design timeline). |
 | `components/ui/*`                          | shadcn components (card, button, input, textarea, badge, table, skeleton, separator, switch, checkbox, label, select, collapsible, avatar, tabs, tooltip, dropdown-menu, sheet, alert-dialog, dialog).                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `components/match-result-text.tsx`         | Shared “Winners def. Losers” line; sides of 5+ names collapse (winners keep the first name as “X & N others”, losers become “N others”) with a tooltip of the full list. Used by wrestler match history and title-reign change lines.                                                                                                                                                                                                                                                                                                                                               |
 | `components/spoiler-winner.tsx`            | Rivalry Winner-column text; blurs/`select-none` when Spoilers is off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -607,15 +630,19 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   tag team titles show two overlaid belts, top copy offset down-right)
   with the title name + optional "(title change)", linked to
   `/titles/$titleId` when `titleLinkable`; below that, the match type as
-  small uppercase text. Resolved title matches show a large "AND NEW!"
-  (amber, `titleChange`) or "AND STILL!" (emerald) callout centered above the
-  sides row, with a context line beneath: "BEGINS Nth REIGN" (new champion's
-  `reign_count`, joined via `title_reigns.from_date` = event date — partial
-  coverage, omitted when missing) or "Nth SUCCESSFUL TITLE DEFENSE" (decisive
-  non-change matches for the title since the latest earlier title change,
-  including this match; computed in `resolveTitleContext` in `lib/events.ts`
-  and exposed on `MatchCardItem` as `winnerReignNumber` /
-  `titleDefenseNumber`). The card header holds the match number, duration, and
+  small uppercase text. Resolved **title outcome** matches (`isTitleOutcome`:
+  title change, or champion present and not contendership/qualifier naming)
+  show a large "AND NEW!" (amber, `titleChange`) or "AND STILL!" (emerald)
+  callout centered above the sides row, with a context line beneath:
+  "FIRST REIGN" / "BEGINS Nth REIGN" (wrestler reign number on this title —
+  uses `title_reign_champions.reign_count` when set, otherwise inferred from
+  prior reign rows via `resolveWrestlerTitleReignNumber`) or "Nth SUCCESSFUL
+  TITLE DEFENSE" (decisive non-change title outcomes for the title since the
+  latest earlier title change, including this match; computed in
+  `resolveTitleContext` in `lib/events.ts` and exposed on `MatchCardItem` as
+  `winnerReignNumber` / `titleDefenseNumber`). Contendership,
+  eliminator, qualifier, and other belt-symbolic bouts keep the marquee but
+  omit the callout. The card header holds the match number, duration, and
   Ringside review link when the match is reviewable (no Cagematch ratings);
   cards use reduced padding (`gap-3 py-4`).
 - **Global Spoilers** (header switch, default off, persisted in
@@ -638,14 +665,26 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   staleness; live fallback; belt art resolved in SQL via
   `title_crosswalk` confidence ≥ 0.7); other parameter combinations compute
   live.
-- **Title detail** (`/titles/$titleId`): title header (optional SDH belt
-  image, name + promotion) and the full reign history from `title_reigns`
-  (newest reign first) with each reign's champions (`title_reign_champions`),
-  dates, duration, and location. Champions link to their wrestler profile when
-  the id resolves. When a title-change match exists for the reign's start date
-  (`matches.title_id` + `title_change` + `events.date` =
-  `title_reigns.from_date`), the card shows “Winner def. Loser at Event on
-  Month Dth, YYYY.” with the event name linked to `/events/$eventId`.
+- **Title detail** (`/titles/$titleId?tab=reigns|details|history&page=`): title header
+  (optional SDH belt image, name + promotion) and tabbed content. **Reigns**
+  (default) shows paginated reign history from `title_reigns` (10 per page,
+  newest reign first) via `listTitleReigns`; total reign count stays in the
+  header from `getTitle`. Each reign shows champions (`title_reign_champions`), dates,
+  duration, and location. Champions link to their wrestler profile when the id
+  resolves and render SDH full-body portraits in the reign card header. The
+  meta row also shows wrestler-specific reign labels (e.g. "First reign") via
+  `resolveWrestlerTitleReignNumber`. When defenses exist, a collapsible list
+  lazy-loads individual defense matches (newest first, scroll capped to three
+  cards tall) with headshots, linked event, and defense ordinal.
+  **Details** reads precomputed stats from `mv_title_stats` (refreshed every
+  10 min): totals, average reign length, record reigns (longest/shortest/most
+  defenses), record holders (most times held / most combined days), and a
+  top-10 holders table. **Title history** shows SDH name and belt-art eras from
+  `sdh_title_name_history` (via `title_crosswalk` → `getSdhTitleProfile`) when
+  crosswalk coverage exists. When a title-change match exists for the reign's
+  start date (`matches.title_id` + `title_change` + `events.date` =
+  `title_reigns.from_date`), the reign card shows “Winner def. Loser at Event
+  on Month Dth, YYYY.” with the event name linked to `/events/$eventId`.
   Multi-person sides (5+ names) in that line collapse to “N others” with a
   hover tooltip. Coverage is partial (~22% overall; much higher for AEW)
   because older/out-of-DB reigns have no matching event.
@@ -690,11 +729,13 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   so they are not stale until UTC midnight. Cached responses cannot be purged
   by URL for `supabase.co` (not our zone) — expiry is TTL-only.
 - Always pass `search` when `<Link>`-ing to `/wrestlers`, `/wrestlers/$wrestlerId`,
-  `/titles`, `/events`, `/matches/$matchId`, `/reviews`, `/predictions`, or
-  `/leaderboard` (their search params are required):
+  `/titles`, `/titles/$titleId`, `/events`, `/matches/$matchId`, `/reviews`,
+  `/predictions`, or `/leaderboard` (their search params are required):
   `search={{ q: '', page: 1 }}` for `/wrestlers`,
   `search={{ tab: 'profile', page: 1 }}` for `/wrestlers/$wrestlerId`,
   `search={{ q: '', page: 1, promotion: '', status: 'all' }}` for `/titles`,
+  `search={{ tab: 'reigns', page: 1 }}` for `/titles/$titleId` (also accepts
+  `tab: 'details'` or `tab: 'history'`),
   `search={{ q: '', page: 1, future: false, promotion: '', sort: 'date_desc' }}`
   for `/events`,
   `search={{ page: 1 }}` for `/matches/$matchId`, `/reviews`, `/predictions`,

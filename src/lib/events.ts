@@ -14,6 +14,7 @@ import {
 import { resolveTitleImageUrls, resolveWrestlerHeadshotUrls } from '#/lib/sdh'
 import { isMatchReviewable } from '#/lib/reviews-shared'
 import { isMatchPredictable } from '#/lib/predictions-shared'
+import { isTitleContendershipMatch, isDarkMatch, isTitleOutcomeMatch, resolveWrestlerTitleReignNumber, type TitleReignRef } from '#/lib/matches-shared'
 import {
   eventLockInstant,
   zonedWallTimeToInstant,
@@ -278,6 +279,8 @@ export interface MatchCardItem {
   /** SDH belt art when the title has a crosswalk match. */
   titleImageUrl: string | null
   titleChange: boolean | null
+  /** True when the bout decided the title (defense or change), not contendership. */
+  isTitleOutcome: boolean
   /**
    * For decisive retained title matches: 1-based successful-defense count
    * within the current reign, including this match. Null when unknown.
@@ -345,14 +348,24 @@ async function resolveTitleContext(
   const defenseNumbers = new Map<string, number>()
   const reignNumbers = new Map<string, number>()
 
-  const decisiveTitleMatches = matchRows.filter(
-    (m) =>
-      m.title_id &&
-      isMatchReviewable(
+  const decisiveTitleMatches = matchRows.filter((m) => {
+    if (!m.title_id) return false
+    if (
+      !isMatchReviewable(
         m.result,
         m.match_sides.map((s) => s.side_role),
-      ),
-  )
+      )
+    ) {
+      return false
+    }
+    return isTitleOutcomeMatch({
+      titleId: m.title_id,
+      titleName: m.title_name,
+      titleChange: m.title_change,
+      matchType: m.match_type,
+      sides: m.match_sides.map((s) => ({ isChampion: s.is_champion })),
+    })
+  })
   if (decisiveTitleMatches.length === 0) {
     return { defenseNumbers, reignNumbers }
   }
@@ -376,7 +389,9 @@ async function resolveTitleContext(
     retainedTitleIds.size > 0
       ? supabase
           .from('matches')
-          .select('id, title_id, title_change, events(event_date)')
+          .select(
+            'id, title_id, title_change, match_type, match_sides(is_champion), events(event_date)',
+          )
           .in('title_id', Array.from(retainedTitleIds))
           .eq('result', 'decisive')
       : Promise.resolve({ data: [], error: null }),
@@ -398,7 +413,12 @@ async function resolveTitleContext(
     if (e.event_date) eventDates.set(e.id, e.event_date)
   }
 
-  type HistoryEntry = { id: string; change: boolean; date: string }
+  type HistoryEntry = {
+    id: string
+    change: boolean
+    date: string
+    isDefense: boolean
+  }
   const historyByTitle = new Map<string, Array<HistoryEntry>>()
   for (const row of historyRes.data ?? []) {
     if (!row.title_id) continue
@@ -406,8 +426,19 @@ async function resolveTitleContext(
     const date = (Array.isArray(embedded) ? embedded[0] : embedded)
       ?.event_date
     if (!date) continue
+    const sides = row.match_sides ?? []
+    const isDefense =
+      !!row.title_change ||
+      (!isTitleContendershipMatch(row.match_type) &&
+        !isDarkMatch(row.match_type) &&
+        sides.some((s) => s.is_champion === true))
     const list = historyByTitle.get(row.title_id) ?? []
-    list.push({ id: row.id, change: !!row.title_change, date })
+    list.push({
+      id: row.id,
+      change: !!row.title_change,
+      date,
+      isDefense,
+    })
     historyByTitle.set(row.title_id, list)
   }
 
@@ -416,6 +447,7 @@ async function resolveTitleContext(
     if (!myDate) continue
 
     if (!m.title_change) {
+      if (isDarkMatch(m.match_type)) continue
       const history = historyByTitle.get(m.title_id!) ?? []
       // Latest title change on or before this match starts the current reign.
       let reignStart: string | null = null
@@ -425,7 +457,7 @@ async function resolveTitleContext(
       }
       let priorDefenses = 0
       for (const h of history) {
-        if (h.change || h.id === m.id) continue
+        if (h.change || h.id === m.id || !h.isDefense) continue
         if (h.date > myDate) continue
         if (reignStart && h.date < reignStart) continue
         priorDefenses++
@@ -442,7 +474,6 @@ async function resolveTitleContext(
     const candidates = (reignsRes.data ?? []).filter(
       (r) => r.title_id === m.title_id && r.from_date === fromDate,
     )
-    if (candidates.length === 0) continue
 
     const winnerIds = new Set<string>()
     const winnerNames = new Set<string>()
@@ -457,6 +488,12 @@ async function resolveTitleContext(
       }
     }
 
+    const allReigns: Array<TitleReignRef> = (reignsRes.data ?? []).map((r) => ({
+      title_id: r.title_id,
+      from_date: r.from_date,
+      champions: r.title_reign_champions,
+    }))
+
     let reignNumber: number | null = null
     for (const reign of candidates) {
       const champions = [...reign.title_reign_champions].sort(
@@ -468,8 +505,15 @@ async function resolveTitleContext(
           (c.wrestler_name &&
             winnerNames.has(c.wrestler_name.toLowerCase())),
       )
-      if (matched?.reign_count != null) {
-        reignNumber = matched.reign_count
+      if (matched) {
+        reignNumber = resolveWrestlerTitleReignNumber(
+          allReigns,
+          m.title_id!,
+          myDate,
+          winnerIds,
+          winnerNames,
+          matched.reign_count,
+        )
         break
       }
     }
@@ -477,7 +521,24 @@ async function resolveTitleContext(
       const champions = [...candidates[0].title_reign_champions].sort(
         (a, b) => a.seq - b.seq,
       )
-      reignNumber = champions[0]?.reign_count ?? null
+      reignNumber = resolveWrestlerTitleReignNumber(
+        allReigns,
+        m.title_id!,
+        myDate,
+        winnerIds,
+        winnerNames,
+        champions[0]?.reign_count,
+      )
+    }
+    if (reignNumber == null) {
+      reignNumber = resolveWrestlerTitleReignNumber(
+        allReigns,
+        m.title_id!,
+        myDate,
+        winnerIds,
+        winnerNames,
+        null,
+      )
     }
     if (reignNumber != null) reignNumbers.set(m.id, reignNumber)
   }
@@ -537,6 +598,34 @@ async function buildMatchCardItems(
     await resolveTitleContext(matchRows)
 
   return matchRows.map((m) => {
+    const sides = [...m.match_sides]
+      .sort(
+        (a, b) =>
+          (sideOrder[a.side_role] ?? 9) - (sideOrder[b.side_role] ?? 9) ||
+          a.side_index - b.side_index,
+      )
+      .map((s) => ({
+        id: s.id,
+        sideIndex: s.side_index,
+        role: s.side_role,
+        isChampion: s.is_champion ?? false,
+        participants: [...s.match_side_participants]
+          .sort((a, b) => a.seq - b.seq)
+          .map((p) => ({
+            role: p.participant_role,
+            id: p.participant_id,
+            name: p.participant_name,
+            linkable:
+              p.participant_role === 'wrestler' &&
+              !!p.participant_id &&
+              linkable.has(p.participant_id),
+            imageUrl:
+              p.participant_role === 'wrestler' && p.participant_id
+                ? (headshots.get(p.participant_id) ?? null)
+                : null,
+          })),
+      }))
+
     return {
       id: m.id,
       index: m.match_index,
@@ -546,6 +635,13 @@ async function buildMatchCardItems(
       titleLinkable: !!m.title_id && linkableTitles.has(m.title_id),
       titleImageUrl: m.title_id ? (titleImages.get(m.title_id) ?? null) : null,
       titleChange: m.title_change,
+      isTitleOutcome: isTitleOutcomeMatch({
+        titleId: m.title_id,
+        titleName: m.title_name,
+        titleChange: m.title_change,
+        matchType: m.match_type,
+        sides,
+      }),
       titleDefenseNumber: defenseNumbers.get(m.id) ?? null,
       winnerReignNumber: reignNumbers.get(m.id) ?? null,
       duration: m.duration,
@@ -564,33 +660,7 @@ async function buildMatchCardItems(
       notes: [...m.match_notes]
         .sort((a, b) => a.seq - b.seq)
         .map((n) => n.note),
-      sides: [...m.match_sides]
-        .sort(
-          (a, b) =>
-            (sideOrder[a.side_role] ?? 9) - (sideOrder[b.side_role] ?? 9) ||
-            a.side_index - b.side_index,
-        )
-        .map((s) => ({
-          id: s.id,
-          sideIndex: s.side_index,
-          role: s.side_role,
-          isChampion: s.is_champion ?? false,
-          participants: [...s.match_side_participants]
-            .sort((a, b) => a.seq - b.seq)
-            .map((p) => ({
-              role: p.participant_role,
-              id: p.participant_id,
-              name: p.participant_name,
-              linkable:
-                p.participant_role === 'wrestler' &&
-                !!p.participant_id &&
-                linkable.has(p.participant_id),
-              imageUrl:
-                p.participant_role === 'wrestler' && p.participant_id
-                  ? (headshots.get(p.participant_id) ?? null)
-                  : null,
-            })),
-        })),
+      sides,
     }
   })
 }
