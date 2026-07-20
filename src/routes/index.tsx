@@ -5,8 +5,9 @@ import { Fragment } from 'react'
 import { recentEventsQueryOptions } from '#/lib/events'
 import type { EnrichedEvent } from '#/lib/events'
 import { worldChampionsQueryOptions } from '#/lib/titles'
-import type { WorldChampionEntry } from '#/lib/titles'
+import type { TopChampionsRow, WorldChampionEntry } from '#/lib/titles'
 import { formatEventDate } from '#/routes/events/index'
+import { Avatar, AvatarFallback, AvatarImage } from '#/components/ui/avatar'
 import { Badge } from '#/components/ui/badge'
 import { Skeleton } from '#/components/ui/skeleton'
 
@@ -38,6 +39,14 @@ function formatReignDate(fromDate: string | null): string | null {
   })
 }
 
+function initials(name: string | null): string {
+  if (!name) return '?'
+  const parts = name.trim().split(/\s+/)
+  const letters =
+    (parts[0]?.[0] ?? '') + (parts.length > 1 ? (parts[1]?.[0] ?? '') : '')
+  return letters.toUpperCase() || '?'
+}
+
 function Hero() {
   return (
     <section className="space-y-2">
@@ -53,8 +62,10 @@ function Hero() {
 }
 
 function Home() {
-  const { data: champions } = useSuspenseQuery(worldChampionsQueryOptions())
+  const { data: championRows } = useSuspenseQuery(worldChampionsQueryOptions())
   const { data: events } = useSuspenseQuery(recentEventsQueryOptions())
+
+  const hasChampions = championRows.some((row) => row.men ?? row.women)
 
   return (
     <div className="space-y-10">
@@ -64,16 +75,16 @@ function Home() {
         <section className="space-y-4">
           <div className="flex items-center gap-2">
             <Trophy className="size-5 text-amber-500" />
-            <h2 className="text-xl font-semibold">Current world champions</h2>
+            <h2 className="text-xl font-semibold">Current champions</h2>
           </div>
-          {champions.length === 0 ? (
+          {!hasChampions ? (
             <p className="text-sm text-muted-foreground">
-              No active world title reigns on record.
+              No active title reigns on record.
             </p>
           ) : (
             <div className="divide-y rounded-lg border">
-              {champions.map((entry) => (
-                <ChampionRow key={entry.titleId} entry={entry} />
+              {championRows.map((row) => (
+                <ChampionGridRow key={row.label} row={row} />
               ))}
             </div>
           )}
@@ -123,13 +134,16 @@ function HomeSkeleton() {
         <section className="space-y-4">
           <div className="flex items-center gap-2">
             <Trophy className="size-5 text-amber-500" />
-            <h2 className="text-xl font-semibold">Current world champions</h2>
+            <h2 className="text-xl font-semibold">Current champions</h2>
           </div>
           <div className="divide-y rounded-lg border">
-            {Array.from({ length: 9 }).map((_, i) => (
-              <div key={i} className="space-y-1.5 p-3">
-                <Skeleton className="h-5 w-48" />
-                <Skeleton className="h-4 w-56" />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="space-y-2 p-3">
+                <Skeleton className="h-4 w-20" />
+                <div className="grid grid-cols-2 gap-3">
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                </div>
               </div>
             ))}
           </div>
@@ -157,13 +171,37 @@ function HomeSkeleton() {
   )
 }
 
-function ChampionRow({ entry }: { entry: WorldChampionEntry }) {
+function ChampionGridRow({ row }: { row: TopChampionsRow }) {
+  return (
+    <div className="space-y-2 p-3">
+      <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+        {row.label}
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <ChampionCell entry={row.men} />
+        <ChampionCell entry={row.women} />
+      </div>
+    </div>
+  )
+}
+
+function ChampionCell({ entry }: { entry: WorldChampionEntry | null }) {
+  if (!entry) {
+    return (
+      <div className="flex min-h-16 items-center justify-center rounded-md border border-dashed px-2 py-3 text-xs text-muted-foreground">
+        Vacant
+      </div>
+    )
+  }
+
   const since = formatReignDate(entry.fromDate)
+  const primaryChampion = entry.champions[0]
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 p-3">
-      <div className="min-w-0">
-        <p className="font-medium">
+    <div className="flex min-w-0 items-start gap-2 rounded-md border px-2 py-2">
+      <ChampionAvatar champion={primaryChampion} />
+      <div className="min-w-0 flex-1 space-y-1">
+        <p className="truncate text-sm font-medium">
           {entry.champions.map((champion, i) => (
             <Fragment key={`${champion.wrestlerId ?? champion.name}-${i}`}>
               {i > 0 && ' & '}
@@ -182,28 +220,63 @@ function ChampionRow({ entry }: { entry: WorldChampionEntry }) {
             </Fragment>
           ))}
         </p>
-        <Link
-          to="/titles/$titleId"
-          params={{ titleId: entry.titleId }}
-          search={{ tab: 'reigns', page: 1 }}
-          className="text-xs text-muted-foreground hover:underline"
-        >
-          {entry.titleName}
-        </Link>
-      </div>
-      <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5">
+          {entry.titleImageUrl ? (
+            <img
+              src={entry.titleImageUrl}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="h-8 w-auto shrink-0 object-contain"
+            />
+          ) : (
+            <Trophy className="size-4 shrink-0 text-amber-500" />
+          )}
+          <Link
+            to="/titles/$titleId"
+            params={{ titleId: entry.titleId }}
+            search={{ tab: 'reigns', page: 1 }}
+            className="truncate text-xs text-muted-foreground hover:underline"
+          >
+            {entry.titleName}
+          </Link>
+        </div>
         {since && (
-          <span>
+          <p className="text-[11px] text-muted-foreground">
             since {since}
             {entry.daysHeld != null &&
               ` · ${numberFmt.format(entry.daysHeld)} days`}
-          </span>
-        )}
-        {entry.promotionLabel && (
-          <Badge variant="outline">{entry.promotionLabel}</Badge>
+          </p>
         )}
       </div>
     </div>
+  )
+}
+
+function ChampionAvatar({
+  champion,
+}: {
+  champion: WorldChampionEntry['champions'][number] | undefined
+}) {
+  if (!champion) {
+    return (
+      <Avatar className="size-12 shrink-0">
+        <AvatarFallback>?</AvatarFallback>
+      </Avatar>
+    )
+  }
+
+  return (
+    <Avatar className="size-12 shrink-0">
+      {champion.imageUrl ? (
+        <AvatarImage
+          src={champion.imageUrl}
+          alt={champion.name ?? ''}
+          referrerPolicy="no-referrer"
+          className="object-cover object-top"
+        />
+      ) : null}
+      <AvatarFallback>{initials(champion.name)}</AvatarFallback>
+    </Avatar>
   )
 }
 

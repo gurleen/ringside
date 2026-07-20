@@ -195,11 +195,58 @@ export interface WorldChampionEntry {
   titleId: string
   titleName: string
   promotionLabel: string | null
+  /** SDH belt art when a crosswalk (or slug fallback) match exists. */
+  titleImageUrl: string | null
   // Reign start, DD.MM.YYYY text (title_reigns.from_date).
   fromDate: string | null
   daysHeld: number | null
   teamName: string | null
   champions: Array<TitleReignChampion>
+}
+
+export interface TopChampionsRow {
+  label: string
+  men: WorldChampionEntry | null
+  women: WorldChampionEntry | null
+}
+
+/** Curated home dashboard slots (AEW → Japan → WWE Raw → WWE SmackDown). */
+const TOP_CHAMPION_ROWS: Array<{
+  label: string
+  menTitleId: string
+  womenTitleId: string
+}> = [
+  { label: 'AEW', menTitleId: '4331', womenTitleId: '4370' },
+  { label: 'Japan', menTitleId: '145', womenTitleId: '1577' },
+  { label: 'WWE Raw', menTitleId: '6069', womenTitleId: '3116' },
+  { label: 'WWE SmackDown', menTitleId: '20', womenTitleId: '2906' },
+]
+
+/** SDH slugs for active titles missing a crosswalk row. */
+const TOP_CHAMPION_TITLE_IMAGE_FALLBACK_SLUGS: Record<string, string> = {
+  '145': 'njpw/iwgp-heavyweight-championship',
+  '6069': 'wwe/world-heavyweight-championship',
+  '3116': 'wwe/women-s-world-championship',
+  '2906': 'wwe/wwe-women-s-championship',
+}
+
+async function resolveSdhTitleImagesBySlug(
+  slugs: ReadonlyArray<string>,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  if (slugs.length === 0) return map
+
+  const supabase = getCachedSupabaseServerClient()
+  const { data, error } = await supabase
+    .from('sdh_titles')
+    .select('id, image_url')
+    .in('id', slugs)
+  if (error) throw new Error(error.message)
+
+  for (const row of data ?? []) {
+    if (row.image_url) map.set(row.id, row.image_url)
+  }
+  return map
 }
 
 function daysSince(fromDate: string | null): number | null {
@@ -211,29 +258,29 @@ function daysSince(fromDate: string | null): number | null {
   return days >= 0 ? days : null
 }
 
-// Reigning champions of "world" titles (dashboard). A title counts as a world
-// title when its name contains "World" or "Undisputed" — the latter covers
-// the Undisputed WWE Championship, which lacks the word "World".
+// Curated top champions for the home dashboard (8 fixed title slots).
 export const getWorldChampions = createServerFn({ method: 'GET' }).handler(
-  async (): Promise<Array<WorldChampionEntry>> => {
-    const cached =
-      await readDashboardCache<Array<WorldChampionEntry>>('world_champions')
-    if (cached) return cached
+  async (): Promise<Array<TopChampionsRow>> => {
+    const titleIds = TOP_CHAMPION_ROWS.flatMap((row) => [
+      row.menTitleId,
+      row.womenTitleId,
+    ])
 
     const supabase = getCachedSupabaseServerClient()
 
     const { data: rows, error } = await supabase
       .from('title_reigns')
       .select('*, title_reign_champions(*), titles!inner(id, name)')
+      .in('title_id', titleIds)
       .is('to_date', null)
     if (error) throw new Error(error.message)
 
-    const reigns = (rows ?? []).filter((r) =>
-      /world|undisputed/i.test(r.titles.name),
+    const reignByTitleId = new Map(
+      (rows ?? []).map((r) => [r.titles.id, r] as const),
     )
 
     const wrestlerIds = new Set<string>()
-    for (const r of reigns) {
+    for (const r of rows ?? []) {
       for (const c of r.title_reign_champions) {
         if (c.wrestler_id) wrestlerIds.add(c.wrestler_id)
       }
@@ -249,44 +296,69 @@ export const getWorldChampions = createServerFn({ method: 'GET' }).handler(
       for (const w of valid ?? []) linkable.add(w.id)
     }
 
-    // titles.promotion isn't embedded (no FK); resolve via the titles table.
     const { data: titleRows, error: tErr } = await supabase
       .from('titles')
       .select('id, promotion')
-      .in('id', Array.from(new Set(reigns.map((r) => r.titles.id))))
+      .in('id', titleIds)
     if (tErr) throw new Error(tErr.message)
     const promotionByTitle = new Map(
       (titleRows ?? []).map((t) => [t.id, t.promotion]),
     )
 
-    const resolvePromotion = await getPromotionResolver()
+    const [resolvePromotion, crosswalkImages, slugImages, portraitImages] =
+      await Promise.all([
+        getPromotionResolver(),
+        resolveTitleImageUrls(titleIds),
+        resolveSdhTitleImagesBySlug(
+          titleIds
+            .map((id) => TOP_CHAMPION_TITLE_IMAGE_FALLBACK_SLUGS[id])
+            .filter((slug): slug is string => !!slug),
+        ),
+        resolveWrestlerPortraitUrls(Array.from(wrestlerIds)),
+      ])
 
-    const entries: Array<WorldChampionEntry> = reigns.map((r) => ({
-      titleId: r.titles.id,
-      titleName: r.titles.name,
-      promotionLabel: resolvePromotion(
-        promotionByTitle.get(r.titles.id) ?? null,
-      ),
-      fromDate: r.from_date,
-      daysHeld: daysSince(r.from_date),
-      teamName: r.team_name,
-      champions: [...r.title_reign_champions]
-        .sort((a, b) => a.seq - b.seq)
-        .map((c) => ({
-          wrestlerId: c.wrestler_id,
-          name: c.wrestler_name,
-          linkable: !!c.wrestler_id && linkable.has(c.wrestler_id),
-          reignCount: c.reign_count,
-          resolvedReignNumber: c.reign_count ?? null,
-          imageUrl: null,
-        })),
+    function titleImageUrl(titleId: string): string | null {
+      return (
+        crosswalkImages.get(titleId) ??
+        slugImages.get(TOP_CHAMPION_TITLE_IMAGE_FALLBACK_SLUGS[titleId] ?? '') ??
+        null
+      )
+    }
+
+    function buildEntry(titleId: string): WorldChampionEntry | null {
+      const reign = reignByTitleId.get(titleId)
+      if (!reign) return null
+
+      return {
+        titleId: reign.titles.id,
+        titleName: reign.titles.name,
+        promotionLabel: resolvePromotion(
+          promotionByTitle.get(reign.titles.id) ?? null,
+        ),
+        titleImageUrl: titleImageUrl(titleId),
+        fromDate: reign.from_date,
+        daysHeld: daysSince(reign.from_date),
+        teamName: reign.team_name,
+        champions: [...reign.title_reign_champions]
+          .sort((a, b) => a.seq - b.seq)
+          .map((c) => ({
+            wrestlerId: c.wrestler_id,
+            name: c.wrestler_name,
+            linkable: !!c.wrestler_id && linkable.has(c.wrestler_id),
+            reignCount: c.reign_count,
+            resolvedReignNumber: c.reign_count ?? null,
+            imageUrl: c.wrestler_id
+              ? (portraitImages.get(c.wrestler_id) ?? null)
+              : null,
+          })),
+      }
+    }
+
+    return TOP_CHAMPION_ROWS.map((row) => ({
+      label: row.label,
+      men: buildEntry(row.menTitleId),
+      women: buildEntry(row.womenTitleId),
     }))
-
-    return entries.sort(
-      (a, b) =>
-        (a.promotionLabel ?? '').localeCompare(b.promotionLabel ?? '') ||
-        a.titleName.localeCompare(b.titleName),
-    )
   },
 )
 
@@ -1217,6 +1289,6 @@ export const titleReignDefensesQueryOptions = (
 
 export const worldChampionsQueryOptions = () =>
   queryOptions({
-    queryKey: ['titles', 'world-champions'],
+    queryKey: ['titles', 'top-champions'],
     queryFn: () => getWorldChampions(),
   })
