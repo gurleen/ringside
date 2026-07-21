@@ -34,7 +34,7 @@ bun run build      # production Workers build
 bun run preview    # local preview of the Workers build
 bun run deploy     # build + wrangler deploy
 bun run cf-typegen # regenerate worker-configuration.d.ts (after wrangler.jsonc changes)
-bun run db-typegen # regenerate public + reviews + predictions Supabase types (requires authenticated Supabase CLI)
+bun run db-typegen # regenerate public + reviews + predictions + shows Supabase types (requires authenticated Supabase CLI)
 bunx tsc --noEmit  # typecheck (no dedicated script)
 bun run lint       # eslint
 bun run format     # prettier --write + eslint --fix
@@ -96,16 +96,17 @@ Bun auto-loads `.env`; do not add `dotenv`.
   `private.refresh_dashboard_cache()`, which rebuilds home + list-default +
   promotion-dropdown payloads).
 - **RLS:** enabled on every public table and on `reviews.match_reviews` /
-  `predictions.match_predictions`. Read access is granted to `anon` +
+  `predictions.match_predictions` / `shows.event_attendance`. Read access is granted to `anon` +
   `authenticated` via `SELECT ... using (true)` policies (public reference
-  data + public reviews/predictions).   Scraped wrestling tables have no write
+  data + public reviews/predictions/shows).   Scraped wrestling tables have no write
   policies (read-only) — exceptions: `events`, where admins
   (`profiles.is_admin`) may `UPDATE` only `event_time` / `event_timezone`
   (column grant + `admin_update_events` policy via `private.is_admin()`;
   migration #18); and admin match-result RPCs (`public.admin_set_match_result`
   / `admin_clear_match_result` → `private.*`, migration #23) that rewrite
   `matches.result` + `match_sides` / participants for live PPV updates
-  (overwritten by the cagematch-scraper ETL). `reviews.match_reviews` and `predictions.match_predictions`
+  (overwritten by the cagematch-scraper ETL). `reviews.match_reviews`, `predictions.match_predictions`,
+  and `shows.event_attendance`
   allow authenticated users to insert/update/delete their own rows
   (`auth.uid() = user_id`); prediction writes also require the event lock
   instant to be in the future and the match to be non-decisive. Tables added
@@ -265,6 +266,12 @@ public`; in `private` so it's off the Data API) which recomputes the home
 33. `public_read_sdh_wrestler_accomplishments` — public `SELECT` RLS on
     `sdh_wrestler_accomplishments` (RLS was on with no policies, so the anon
     client returned an empty set despite ~7.5k loaded rows).
+34. `shows_event_attendance` — creates schema `shows` and table
+    `shows.event_attendance` (user event attendance: `in_person` | `tv`;
+    soft `event_id` with no FK to `events`). Public `SELECT` RLS; own-row
+    write RLS. Unique `(user_id, event_id)`. Exposes `shows` on
+    `authenticator` `pgrst.db_schemas` (`public, reviews, predictions, shows`)
+    and reloads PostgREST.
 
 ## 6. Data model
 
@@ -323,6 +330,14 @@ Access via Supabase client with `.schema('reviews')` (or `db: { schema: 'reviews
 | `match_predictions` | 0+   | PK `id` (uuid). FK `user_id` → `auth.users` only. Soft `match_id` / `event_id` (**no FK** to `matches`/`events` — scrapers can delete/replace cards freely). `predicted_side_index`, `predicted_participants` jsonb snapshot of wrestlers at pick time, `status` ∈ {`pending`,`correct`,`incorrect`,`void`}, `points_awarded` (1 / 0 / null). Unique `(user_id, match_id)`. Public read; own-row write until event lock; scoring via `predictions.score_event_predictions` RPC (compares snapshot to winner side; void if card changed or match missing). |
 
 Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `event_time`+`event_timezone` when set, else midnight `America/New_York` on `event_date` (`eventLockInstant` / `private.event_prediction_lock_at`).
+
+### Schema: `shows`
+
+| Table              | Rows | Notes                                                                                                                                                                                                                                                                                          |
+| ------------------ | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `event_attendance` | 0+   | PK `id` (uuid). FK `user_id` → `auth.users` only. Soft `event_id` (**no FK** to `events`). `attendance` ∈ {`in_person`,`tv`}. Unique `(user_id, event_id)`. Public read; own-row write RLS. Independent of match-review `viewing_method`. Indexes on `user_id`, `event_id`. |
+
+Access via `.schema('shows')`. Not edge-cached. “My Shows” is the product name for this attendance list.
 
 ### Data quirks (important)
 
@@ -418,8 +433,8 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   (config in `components.json`). Components land in `src/components/ui`.
 - **DB types:** `src/lib/database.types.ts` is machine-generated from the live
   DB (includes `events.event_date` and schemas `public` + `reviews` +
-  `predictions`). After any schema change, run `bun run db-typegen`; it invokes
-  the authenticated Supabase CLI with `--schema public,reviews,predictions` and
+  `predictions` + `shows`). After any schema change, run `bun run db-typegen`; it invokes
+  the authenticated Supabase CLI with `--schema public,reviews,predictions,shows` and
   formats the result. Do not hand-edit this file. Custom schemas must also be
   listed under Project Settings → API → Data API Settings → Exposed schemas
   (also set on `authenticator` `pgrst.db_schemas` for this project).
@@ -452,6 +467,10 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   leaderboard loaders (RPC rematches by snapshot when card slots moved).
   Event prediction maps key by the rematched bout id via
   `resolvePredictionMatchId`. Mutations invalidate `['predictions', …]`.
+- **Shows (event attendance) data layer:** same split —
+  `shows-shared.ts` / `shows.server.ts` / `shows.ts`. Soft `event_id`;
+  upsert/delete own rows (`attendance` ∈ `in_person` | `tv`). Reads use
+  uncached client; writes use Auth client. Mutations invalidate `['shows', …]`.
 
 ## 8. File map (`src/`)
 
@@ -477,15 +496,17 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
 | `lib/events.ts`                            | Server fns + query options: event list (search/paginate/`future`/`promotion` filter), recent past events (`getRecentEvents`, dashboard), distinct event promotions (`listEventPromotions`), event detail with full match card (match card exposes `titleId`/`titleLinkable`/`titleImageUrl`, `isTitleOutcome`, plus `hasResult` / `isPredictable`; detail also returns `predictionsLockAt` / `predictionsLocked`; `getEvent` / `getMatchSummary` use uncached Supabase); admin `updateEventTime` / `setMatchResult` / `clearMatchResult` (→ `events.server.ts`). Re-exports `getPromotionResolver` from `promotions.ts`. Event list rows carry `hasOccurred` (start-time instant when set, else any decisive match via `isMatchReviewable`, else null), attached after the cache/live read so `events_default_page` stays valid. |
 | `lib/reviews.ts` / `lib/reviews.server.ts` | Match review server fns + query options: batched per-match averages (`getMatchReviewSummaries`), paginated match reviews (`listMatchReviews`, usernames via `profiles`), paginated user reviews (`listUserReviews` with match/event context), create/update/delete (Auth client + RLS); creates verify the match has a decisive result before writing. `reviews-shared.ts` holds client-safe constants and the shared result-eligibility predicate.                                                                                                                                 |
 | `lib/predictions.ts` / `.server.ts`        | Match prediction server fns + query options: per-event user picks (`listEventPredictions`), paginated user predictions (`listUserPredictions`), all-time leaderboard (`getLeaderboard`), upsert/delete until lock, lazy `scoreEventPredictions` RPC. `predictions-shared.ts` holds `isMatchPredictable`, participant fingerprint/snapshot helpers, `pickLabel`/`sideLabel`/`resolvePickedSide`/`resolvePredictionMatchId`, complete-slate helpers (`hasCompletePredictionSlate`), and `PREDICTION_POINTS_WINNER` (1).                                                                                                                                                                                                  |
+| `lib/shows.ts` / `.server.ts`              | Event attendance (“My Shows”) server fns + query options: current user’s mark for an event (`getEventAttendance`), paginated user list (`listUserShows` with event name/date/promotion), upsert/delete. `shows-shared.ts` holds `Attendance` (`in_person` \| `tv`) + labels. Soft `event_id`.                                                                                                                                                                                                                                                                                                                                  |
 | `lib/titles-shared.ts`                     | Client-safe title reign helpers: `isTitleDefenseRow` (excludes dark matches), `eventDateInReign`, `formatChampionReignLabel`, `formatDefenseCountLabel`. |
 | `lib/titles.ts`                            | Server fns + query options: title list (`listTitles`, search/paginate/`promotion`/`status` filter, with reign counts + active flag + optional SDH `imageUrl`), distinct title promotions (`listTitlePromotions`), title detail header (`getTitle` — metadata + SDH profile), paginated reign history (`listTitleReigns`, page size 10), title stats from `mv_title_stats` (`getTitleStats`), lazy `listTitleReignDefenses` (per-reign defense match list), and curated home top champions (`getWorldChampions` → `TopChampionsRow[]`, 8 fixed title slots with SDH portraits + belt art). Reuses `getPromotionResolver`, `resolveTitleImageUrls`, `resolveWrestlerPortraitUrls`, and `matches-shared` reign inference. |
 | `lib/sdh.ts`                               | Typed SDH crosswalk helpers (`confidence >= 0.7`): `getSdhWrestlerProfile` loads the highest-confidence wrestler match plus ordered name, promotion/brand, alignment, attribute, role, image, and accomplishment collections; `getSdhTitleProfile` loads belt art + ordered `sdh_title_name_history` for a Cagematch title id; `resolveTitleImageUrls` maps Cagematch title ids to belt art; `resolveWrestlerHeadshotUrls` maps Cagematch wrestler ids to the latest gallery headshot (lowest `seq` = most recent); `resolveWrestlerPortraitUrls` maps to `sdh_wrestlers.image_url` full-body renders with gallery fallback.                                                                                                                                                                                  |
 | `lib/share-image.ts`                       | `getWrestlerHeadshotDataUrls` + `getTitleImageDataUrls` server fns (+ query options): fetch up to 48 SDH headshots / belt-art images server-side (ids resolved via crosswalk, never raw URLs) and return base64 data URLs so the share-card `html-to-image` export never fetches cross-origin. Used by review (≤4) and prediction (full event slate) share cards.                                                                                                                                                                                                                                                          |
 | `lib/share-card-export.ts`                 | Client-safe PNG export helpers shared by review/prediction share dialogs: `SHARE_SIZE`/`PREVIEW_SIZE`, `exportNodeToPngBlob`, `downloadPngBlob`, Safari-safe `copyPngBlob`, `shareFilename`.                                                                                                                                                                                                                                                                                                                                                                                      |
-| `routes/__root.tsx`                        | Root document + header/nav; `beforeLoad` ensures the query-cached Auth user and promotion abbreviations (`promotionAbbrsQueryOptions`); Log in / Sign up or profile menu. Primary nav destinations preload on render. Nav links are inline on `md+` and collapse into a hamburger-triggered left `Sheet` on mobile (shared `NavLinks`; sheet closes on navigation). Global **Spoilers** switch (desktop header + mobile sheet footer) via `SpoilersProvider` / `SpoilersToggle`.                                                                                                                                                                                                               |
+| `routes/__root.tsx`                        | Root document + header/nav; `beforeLoad` ensures the query-cached Auth user and promotion abbreviations (`promotionAbbrsQueryOptions`); Log in / Sign up or profile menu. Primary nav destinations preload on render. Nav links are inline on `md+` and collapse into a hamburger-triggered left `Sheet` on mobile (shared `NavLinks`; sheet closes on navigation). Global **Spoilers** switch via `SpoilersProvider` / `SpoilersToggle` (account menu on desktop when signed in, beside Log in when signed out; mobile sheet footer).                                                                                                                                                                                                               |
 | `routes/login.tsx` / `signup.tsx`          | Email/password forms; signup collects unique username.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `routes/auth/confirm.tsx`                  | PKCE email-confirm callback (`exchangeCodeForSession`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `components/user-menu.tsx`                 | Signed-in header menu (avatar initials, username + Admin badge when `isAdmin`, email, My Reviews, My Predictions, log out).                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `components/user-menu.tsx`                 | Signed-in header menu (avatar initials, username + Admin badge when `isAdmin`, email, Spoilers switch, My Reviews, My Shows, My Predictions, log out).                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `components/event-attendance-control.tsx`  | Mark/clear event attendance (`in_person` / `tv`) via `useMutation` → upsert/delete; used on event detail + My Shows cards.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `components/prediction-side-picker.tsx`    | Per-match winner picker / locked status for event cards (`useMutation` → upsert/delete). Uses shared `pickLabel` / `sideLabel` from `predictions-shared.ts`.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `components/prediction-share-dialog.tsx`   | Event-level share modal: 1080-wide branded card (square minimum; grows taller to fit every pick) headlined "@user's Picks", with SDH roster headshots (data URLs; stacked avatars for multi-person sides), "vs opponents" line under each pick, belt art on title bouts, adaptive density / two columns for large cards, copy-to-clipboard or download PNG via `share-card-export`. No outcome spoilers — picks only.                                                                                                                                                                                                     |
 | `components/admin-match-result-menu.tsx`   | Admin-only 3-dot dropdown in the match-card header: “Set Result…” opens a `Dialog` to pick the winning side (Save → `setMatchResult` by `side.id`; title matches also get a `title_change` checkbox for AND NEW!); “Clear result…” confirms via `AlertDialog` → `clearMatchResult`.                                                                                                                                                                                                                                                                                                                                                                 |
@@ -500,9 +521,10 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
 | `routes/wrestlers/$wrestlerId.tsx`         | Wrestler detail (profile + history + matches + rivalries tabs; `?tab=&page=&opponent=`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `routes/rivalries/$rivalryKey.tsx`         | All-time rivalry page (`?page=`): wrestlers from sorted id key, paginated matches with that exact wrestler set.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `routes/events/index.tsx`                  | Event list (search, pagination, promotion filter, "Show future events" toggle); shows venue start time under the date and a status dot per row (green = happened, amber = upcoming, gray = unknown; from `hasOccurred`). Exports `formatEventDate`.                                                                                                                                                                                                                                                                                                                                 |
-| `routes/events/$eventId.tsx`               | Event detail + match card (sides, participants, notes). Header shows venue start time + browser-only device-time note. Admins get an `EventTimeEditor` (time input + IANA zone shadcn Select from `Intl.supportedValuesOf('timeZone')` → `updateEventTime`) and a per-match 3-dot `AdminMatchResultMenu` in each card header (≥2 sides). Title badge links to the title page when the title id resolves. Each match header shows a compact Ringside review average/count (or “Reviews”) linking to `/matches/$matchId`, plus a “Rivalry” link to `/rivalries/$rivalryKey` when the card has 2–4 sides and every wrestler participant is linkable. Predictable matches show a winner side picker (locked after `predictionsLocked`). When a signed-in user has picks for every eligible match (≥2 sides and predictable or decided, including dark matches), a “Share your predictions!” card opens `PredictionShareDialog`. When global Spoilers is off, cards use `unspoiledMatchCard` (vs connector, no winner/loser/title-change/reviews/duration/finish) and prediction status stays Pending.                                                                                                                                     |
+| `routes/events/$eventId.tsx`               | Event detail + match card (sides, participants, notes). Header shows venue start time + browser-only device-time note + event attendance control (“Did you watch?”). Admins get an `EventTimeEditor` (time input + IANA zone shadcn Select from `Intl.supportedValuesOf('timeZone')` → `updateEventTime`) and a per-match 3-dot `AdminMatchResultMenu` in each card header (≥2 sides). Title badge links to the title page when the title id resolves. Each match header shows a compact Ringside review average/count (or “Reviews”) linking to `/matches/$matchId`, plus a “Rivalry” link to `/rivalries/$rivalryKey` when the card has 2–4 sides and every wrestler participant is linkable. Predictable matches show a winner side picker (locked after `predictionsLocked`). When a signed-in user has picks for every eligible match (≥2 sides and predictable or decided, including dark matches), a “Share your predictions!” card opens `PredictionShareDialog`. When global Spoilers is off, cards use `unspoiledMatchCard` (vs connector, no winner/loser/title-change/reviews/duration/finish), prediction status stays Pending, and a dashed “results hidden” notice appears above the match list when any match has a result.                                                                                                                                     |
 | `routes/matches/$matchId.tsx`              | Match reviews page (`?page=`): match summary header, Ringside average, write form (signed-in) or log-in prompt, paginated public reviews.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `routes/reviews/index.tsx`                 | “My Reviews” (`?page=`): auth-gated list of the signed-in user’s reviews with match/event context + edit/delete.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `routes/shows/index.tsx`                   | “My Shows” (`?page=`): auth-gated list of the signed-in user’s event attendance (`in_person` / `tv`) with event context + edit/clear.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `routes/predictions/index.tsx`             | “My Predictions” (`?page=`): auth-gated list of the signed-in user’s picks with event/match context + status.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `routes/leaderboard/index.tsx`             | Public all-time prediction points table (`?page=`): rank, username, points, correct/incorrect counts.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `routes/titles/index.tsx`                  | Title card grid (search, pagination, promotion filter, Active/Inactive status filter; image placeholder + badges).                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -511,7 +533,7 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
 | `components/match-result-text.tsx`         | Shared “Winners def. Losers” line; sides of 5+ names collapse (winners keep the first name as “X & N others”, losers become “N others”) with a tooltip of the full list. Used by wrestler match history and title-reign change lines.                                                                                                                                                                                                                                                                                                                                               |
 | `components/spoiler-winner.tsx`            | Rivalry Winner-column text; blurs/`select-none` when Spoilers is off.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `components/spoilers-provider.tsx`         | Global Spoilers preference (`localStorage` key `ringside:spoilers`, default off) + `useSpoilers()` hook.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `components/spoilers-toggle.tsx`           | Header/hamburger Spoilers switch wired to `useSpoilers()`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `components/spoilers-toggle.tsx`           | Account-menu / hamburger Spoilers switch wired to `useSpoilers()`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `lib/spoilers-shared.ts`                   | `unspoiledMatchCard()` — strips result cues from a resolved `MatchCardItem` so it renders like a scheduled bout.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 ## 9. Feature notes
@@ -603,8 +625,8 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   every wrestler participant has a linkable id. **Include matches with others**
   expands the list to matches containing every rivalry wrestler plus any
   additional participants. Table columns are Date, Event, and Winner; the
-  global header **Spoilers** switch (off by default; `localStorage`
-  `ringside:spoilers`) un-blurs the winner name(s) or non-decisive finish
+  global **Spoilers** switch (off by default; `localStorage`
+  `ringside:spoilers`; account menu / hamburger) un-blurs the winner name(s) or non-decisive finish
   label (`finish_note` such as “No Contest” / “Time Limit Draw”, else “No
   Contest” when `result` is `no_decision`/`unknown`). Unresolved rows with no
   finish info still show "—". Header links each wrestler to their detail page.
@@ -674,14 +696,16 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   omit the callout. The card header holds the match number, duration, and
   Ringside review link when the match is reviewable (no Cagematch ratings);
   cards use reduced padding (`gap-3 py-4`).
-- **Global Spoilers** (header switch, default off, persisted in
+- **Global Spoilers** (account menu on desktop when signed in, beside Log in
+  when signed out, hamburger sheet on mobile; default off, persisted in
   `localStorage` as `ringside:spoilers`): when off, event match cards render
   via `unspoiledMatchCard` as if the bout has not happened (sides sorted by
   `sideIndex` with role `side`, “vs” connector, no trophy/dimming, no AND
   NEW!/AND STILL!, no title-change label, no duration/finish/notes, no
-  reviews link); locked prediction badges stay Pending. Rivalry Winner columns
-  stay blurred until Spoilers is on. Admin result menus still see the real
-  card data.
+  reviews link); locked prediction badges stay Pending. When results exist
+  but Spoilers is off, a dashed notice above the match card explains that
+  winners are hidden. Rivalry Winner columns stay blurred until Spoilers is
+  on. Admin result menus still see the real card data.
 - **Titles** (`/titles?q=&page=&promotion=&status=`): card grid (3 cols on
   large screens) with SDH belt art when available (else Trophy placeholder),
   promotion badge, and Active/Inactive badge. A title is active when it has a
@@ -732,6 +756,11 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
 - **My Reviews** (`/reviews?page=`): auth-gated. Lists the current user’s
   reviews with event/match context. Linked from the account dropdown
   (`UserMenu`), not the public nav.
+- **My Shows** (`/shows?page=`): auth-gated. Lists the current user’s event
+  attendance marks (`in_person` / `tv`) with event name/date/promotion.
+  Mark/clear from the event detail header (“Did you watch?”) or inline on
+  this list. Separate from match-review `viewing_method`. Linked from the
+  account dropdown (`UserMenu`), not the public nav.
 - **Match predictions** (`/events/$eventId`, `/predictions`, `/leaderboard`):
   signed-in users pick a winning side on non-decisive matches before the
   event lock instant (admin start time, else midnight America/New_York on
@@ -759,7 +788,7 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   by URL for `supabase.co` (not our zone) — expiry is TTL-only.
 - Always pass `search` when `<Link>`-ing to `/wrestlers`, `/wrestlers/$wrestlerId`,
   `/titles`, `/titles/$titleId`, `/events`, `/matches/$matchId`, `/reviews`,
-  `/predictions`, or `/leaderboard` (their search params are required):
+  `/shows`, `/predictions`, or `/leaderboard` (their search params are required):
   `search={{ q: '', page: 1 }}` for `/wrestlers`,
   `search={{ tab: 'profile', page: 1 }}` for `/wrestlers/$wrestlerId`,
   `search={{ q: '', page: 1, promotion: '', status: 'all' }}` for `/titles`,
@@ -767,7 +796,7 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   `tab: 'details'` or `tab: 'history'`),
   `search={{ q: '', page: 1, future: false, promotion: '', sort: 'date_desc' }}`
   for `/events`,
-  `search={{ page: 1 }}` for `/matches/$matchId`, `/reviews`, `/predictions`,
+  `search={{ page: 1 }}` for `/matches/$matchId`, `/reviews`, `/shows`, `/predictions`,
   and `/leaderboard`.
 - After editing routes, run `bun run generate-routes` (dev does it automatically).
 - Always pass `search` when `<Link>`-ing to `/login`

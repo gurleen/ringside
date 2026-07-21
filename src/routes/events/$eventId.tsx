@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Clock,
   ExternalLink,
+  EyeOff,
   MapPin,
   Moon,
   Pencil,
@@ -37,6 +38,8 @@ import {
   eventPredictionsQueryOptions,
   type EventPredictionMap,
 } from '#/lib/predictions'
+import { eventAttendanceQueryOptions } from '#/lib/shows'
+import { EventAttendanceControl } from '#/components/event-attendance-control'
 import {
   hasCompletePredictionSlate,
   predictionShareEligibleMatches,
@@ -91,6 +94,9 @@ export const Route = createFileRoute('/events/$eventId')({
       ),
       context.queryClient.ensureQueryData(
         eventPredictionsQueryOptions(params.eventId),
+      ),
+      context.queryClient.ensureQueryData(
+        eventAttendanceQueryOptions(params.eventId),
       ),
     ])
   },
@@ -186,10 +192,16 @@ function EventDetailPage() {
   const { data: predictions } = useSuspenseQuery(
     eventPredictionsQueryOptions(eventId),
   )
+  const { data: attendance } = useSuspenseQuery(
+    eventAttendanceQueryOptions(eventId),
+  )
+  const { spoilers } = useSpoilers()
   const [shareOpen, setShareOpen] = useState(false)
 
   const mainMatches = matches.filter((m) => !isDarkMatch(m.matchType))
   const darkMatches = matches.filter((m) => isDarkMatch(m.matchType))
+  const resultsHidden =
+    !spoilers && matches.some((m) => m.hasResult)
   const showPredictions =
     !predictionsLocked ||
     matches.some((m) => m.isPredictable) ||
@@ -237,6 +249,11 @@ function EventDetailPage() {
               ))}
           </div>
           <DeviceTimeNote event={event} />
+          <EventAttendanceControl
+            eventId={eventId}
+            attendance={attendance}
+            signedIn={!!user}
+          />
           {showPredictions && (
             <p className="text-xs text-muted-foreground">
               {predictionsLocked
@@ -296,6 +313,15 @@ function EventDetailPage() {
             {mainMatches.length === 1 ? 'match' : 'matches'}
           </span>
         </div>
+
+        {resultsHidden && (
+          <p className="flex items-start gap-2 rounded-lg border border-dashed bg-muted/40 px-3 py-2.5 text-sm text-muted-foreground">
+            <EyeOff className="mt-0.5 size-4 shrink-0" aria-hidden />
+            <span>
+              Match results are hidden. Turn on Spoilers to reveal winners.
+            </span>
+          </p>
+        )}
 
         {matches.length === 0 ? (
           <p className="text-sm text-muted-foreground">

@@ -1503,6 +1503,49 @@ export type Database = {
       [_ in never]: never
     }
   }
+  shows: {
+    Tables: {
+      event_attendance: {
+        Row: {
+          attendance: string
+          created_at: string
+          event_id: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attendance: string
+          created_at?: string
+          event_id: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attendance?: string
+          created_at?: string
+          event_id?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
 }
 
 type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
@@ -1627,6 +1670,9 @@ export const Constants = {
     Enums: {},
   },
   reviews: {
+    Enums: {},
+  },
+  shows: {
     Enums: {},
   },
 } as const

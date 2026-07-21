@@ -191,14 +191,14 @@ function RootComponent() {
               <NavLinks linkClassName="transition-colors hover:text-foreground" />
             </nav>
             <div className="ml-auto flex items-center gap-2">
-              <SpoilersToggle
-                id="spoilers-desktop"
-                className="hidden text-muted-foreground md:flex"
-              />
               {user ? (
                 <UserMenu user={user} />
               ) : (
                 <>
+                  <SpoilersToggle
+                    id="spoilers-desktop-guest"
+                    className="hidden text-muted-foreground md:flex"
+                  />
                   <Button asChild variant="ghost" size="sm">
                     <Link to="/login" search={{ error: undefined }}>
                       Log in
