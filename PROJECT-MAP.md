@@ -245,6 +245,22 @@ public`; in `private` so it's off the Data API) which recomputes the home
     (mirrors app `isDarkMatch`: `/^dark\\b/i` on trimmed `match_type`);
     recreates `mv_title_reign_stats` / `mv_title_stats` so defense counts skip
     dark matches (e.g. "Dark Match", "Dark Tag Team Match").
+29. `predictions_score_by_participant_match` — scoring resolves the bout by
+    participant-snapshot fingerprint within the event (preferring the stored
+    `match_id` when it still matches), rematches pending rows onto that id
+    when unique allows, and allows `match_id`/`event_id` updates while
+    `status='pending'` (client write trigger). Needed because match PKs are
+    `<eventId>-<match_index>` so scraper card reorders move bouts across ids.
+30. `predictions_score_rematch_keep_pending` — if no bout matches the snapshot
+    but the stored `match_id` still exists, keep the row pending until a
+    decisive result (then void); only void immediately when the match row is
+    gone.
+31. `predictions_score_displace_stale` — when rematching onto a `match_id` that
+    already has a row for the user, void the occupant if its snapshot no
+    longer matches that bout, then reclaim the id for the rematched pick.
+32. `predictions_score_swap_stale_occupant` — displace by swapping match ids
+    (stale occupant → orphan slot + void; rematched pick → resolved bout) so
+    unique `(user_id, match_id)` is never violated.
 
 ## 6. Data model
 
@@ -341,7 +357,11 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   `result = 'no_decision'` (or occasionally `unknown`) with only `side` rows.
   Predictable matches are the inverse (non-decisive, ≥2 sides). After a result
   lands, `side_index` resets within `winner`/`loser` roles — predictions score
-  by participant fingerprint snapshot, not bare side index.
+  and display by participant fingerprint snapshot, not bare side index.
+  Match PKs are `<eventId>-<match_index>`, so scraper card reorders move bouts
+  across ids; scoring and the event prediction map rematch pending picks onto
+  the bout whose side still matches the snapshot (preferring the stored
+  `match_id` when it still fits).
 - **Admin live match results** write the same `matches` / `match_sides` rows
   the scraper owns (via RPC). They unlock reviews/predictions scoring
   immediately; ETL DELETE+INSERT of a changed event subtree (nightly + hourly
@@ -425,7 +445,9 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   Soft refs + participant snapshots; upsert/delete until
   `eventLockInstant`; lazy scoring via
   `predictions.score_event_predictions` RPC from event / my-predictions /
-  leaderboard loaders. Mutations invalidate `['predictions', …]`.
+  leaderboard loaders (RPC rematches by snapshot when card slots moved).
+  Event prediction maps key by the rematched bout id via
+  `resolvePredictionMatchId`. Mutations invalidate `['predictions', …]`.
 
 ## 8. File map (`src/`)
 
@@ -450,7 +472,7 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
 | `lib/rivalries-shared.ts` / `rivalries.ts` | All-time rivalry helpers + server fns: client-safe key parse/`rivalryIdsFromMatchSides` (2–4 sides, all wrestlers linkable); `getRivalry` + `listRivalryMatches` (intersect participation → exact wrestler-id set by default, or include matches with additional wrestlers → paginate/hydrate); query options `rivalryQueryOptions` / `rivalryMatchesQueryOptions`. |
 | `lib/events.ts`                            | Server fns + query options: event list (search/paginate/`future`/`promotion` filter), recent past events (`getRecentEvents`, dashboard), distinct event promotions (`listEventPromotions`), event detail with full match card (match card exposes `titleId`/`titleLinkable`/`titleImageUrl`, `isTitleOutcome`, plus `hasResult` / `isPredictable`; detail also returns `predictionsLockAt` / `predictionsLocked`; `getEvent` / `getMatchSummary` use uncached Supabase); admin `updateEventTime` / `setMatchResult` / `clearMatchResult` (→ `events.server.ts`). Re-exports `getPromotionResolver` from `promotions.ts`. Event list rows carry `hasOccurred` (start-time instant when set, else any decisive match via `isMatchReviewable`, else null), attached after the cache/live read so `events_default_page` stays valid. |
 | `lib/reviews.ts` / `lib/reviews.server.ts` | Match review server fns + query options: batched per-match averages (`getMatchReviewSummaries`), paginated match reviews (`listMatchReviews`, usernames via `profiles`), paginated user reviews (`listUserReviews` with match/event context), create/update/delete (Auth client + RLS); creates verify the match has a decisive result before writing. `reviews-shared.ts` holds client-safe constants and the shared result-eligibility predicate.                                                                                                                                 |
-| `lib/predictions.ts` / `.server.ts`        | Match prediction server fns + query options: per-event user picks (`listEventPredictions`), paginated user predictions (`listUserPredictions`), all-time leaderboard (`getLeaderboard`), upsert/delete until lock, lazy `scoreEventPredictions` RPC. `predictions-shared.ts` holds `isMatchPredictable`, participant fingerprint/snapshot helpers, `pickLabel`/`sideLabel`/`resolvePickedSide`, complete-slate helpers (`hasCompletePredictionSlate`), and `PREDICTION_POINTS_WINNER` (1).                                                                                                                                                                                                  |
+| `lib/predictions.ts` / `.server.ts`        | Match prediction server fns + query options: per-event user picks (`listEventPredictions`), paginated user predictions (`listUserPredictions`), all-time leaderboard (`getLeaderboard`), upsert/delete until lock, lazy `scoreEventPredictions` RPC. `predictions-shared.ts` holds `isMatchPredictable`, participant fingerprint/snapshot helpers, `pickLabel`/`sideLabel`/`resolvePickedSide`/`resolvePredictionMatchId`, complete-slate helpers (`hasCompletePredictionSlate`), and `PREDICTION_POINTS_WINNER` (1).                                                                                                                                                                                                  |
 | `lib/titles-shared.ts`                     | Client-safe title reign helpers: `isTitleDefenseRow` (excludes dark matches), `eventDateInReign`, `formatChampionReignLabel`, `formatDefenseCountLabel`. |
 | `lib/titles.ts`                            | Server fns + query options: title list (`listTitles`, search/paginate/`promotion`/`status` filter, with reign counts + active flag + optional SDH `imageUrl`), distinct title promotions (`listTitlePromotions`), title detail header (`getTitle` — metadata + SDH profile), paginated reign history (`listTitleReigns`, page size 10), title stats from `mv_title_stats` (`getTitleStats`), lazy `listTitleReignDefenses` (per-reign defense match list), and curated home top champions (`getWorldChampions` → `TopChampionsRow[]`, 8 fixed title slots with SDH portraits + belt art). Reuses `getPromotionResolver`, `resolveTitleImageUrls`, `resolveWrestlerPortraitUrls`, and `matches-shared` reign inference. |
 | `lib/sdh.ts`                               | Typed SDH crosswalk helpers (`confidence >= 0.7`): `getSdhWrestlerProfile` loads the highest-confidence wrestler match plus ordered name, promotion/brand, alignment, attribute, role, and image collections; `getSdhTitleProfile` loads belt art + ordered `sdh_title_name_history` for a Cagematch title id; `resolveTitleImageUrls` maps Cagematch title ids to belt art; `resolveWrestlerHeadshotUrls` maps Cagematch wrestler ids to the latest gallery headshot (lowest `seq` = most recent); `resolveWrestlerPortraitUrls` maps to `sdh_wrestlers.image_url` full-body renders with gallery fallback.                                                                                                                                                                                  |

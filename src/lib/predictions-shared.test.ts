@@ -5,6 +5,7 @@ import {
   isPredictionShareEligibleMatch,
   participantsFingerprint,
   pickLabel,
+  resolvePredictionMatchId,
   sidesMatch,
   snapshotParticipants,
 } from '#/lib/predictions-shared'
@@ -170,11 +171,30 @@ describe('pickLabel', () => {
     ).toBe('Iyo Sky')
   })
 
+  test('prefers the participant snapshot over a stale side index', () => {
+    // After a result, side_index resets within winner/loser roles — index 1
+    // may now be a different corner than the one the user picked.
+    expect(
+      pickLabel(sides, {
+        predicted_side_index: 1,
+        predicted_participants: [
+          { id: '1', name: 'Rhea Ripley' },
+          { id: '2', name: 'Liv Morgan' },
+          { id: '3', name: 'Raquel Rodriguez' },
+        ],
+      }),
+    ).toBe('Rhea Ripley & 2 others')
+  })
+
   test('compacts multi-person sides', () => {
     expect(
       pickLabel(sides, {
         predicted_side_index: 0,
-        predicted_participants: [],
+        predicted_participants: [
+          { id: '1', name: 'Rhea Ripley' },
+          { id: '2', name: 'Liv Morgan' },
+          { id: '3', name: 'Raquel Rodriguez' },
+        ],
       }),
     ).toBe('Rhea Ripley & 2 others')
   })
@@ -189,5 +209,104 @@ describe('pickLabel', () => {
         ],
       }),
     ).toBe('Old Wrestler & Other Wrestler')
+  })
+})
+
+describe('resolvePredictionMatchId', () => {
+  const matches = [
+    {
+      id: 'e-1',
+      sides: [
+        {
+          sideIndex: 0,
+          participants: [{ role: 'wrestler', id: 'a', name: 'A' }],
+        },
+        {
+          sideIndex: 1,
+          participants: [{ role: 'wrestler', id: 'b', name: 'B' }],
+        },
+      ],
+    },
+    {
+      id: 'e-2',
+      sides: [
+        {
+          sideIndex: 0,
+          participants: [{ role: 'wrestler', id: 'c', name: 'C' }],
+        },
+        {
+          sideIndex: 1,
+          participants: [{ role: 'wrestler', id: 'd', name: 'D' }],
+        },
+      ],
+    },
+  ]
+
+  test('keeps the preferred match when the snapshot still fits', () => {
+    expect(
+      resolvePredictionMatchId(
+        matches,
+        {
+          predicted_side_index: 1,
+          predicted_participants: [{ id: 'b', name: 'B' }],
+        },
+        'e-1',
+      ),
+    ).toBe('e-1')
+  })
+
+  test('rematches onto the bout that holds the snapshot after a reorder', () => {
+    // Pick was saved against slot e-1, but wrestlers B moved to e-2.
+    const reordered = [
+      {
+        id: 'e-1',
+        sides: [
+          {
+            sideIndex: 0,
+            participants: [{ role: 'wrestler', id: 'x', name: 'X' }],
+          },
+          {
+            sideIndex: 1,
+            participants: [{ role: 'wrestler', id: 'y', name: 'Y' }],
+          },
+        ],
+      },
+      {
+        id: 'e-2',
+        sides: [
+          {
+            sideIndex: 0,
+            participants: [{ role: 'wrestler', id: 'a', name: 'A' }],
+          },
+          {
+            sideIndex: 1,
+            participants: [{ role: 'wrestler', id: 'b', name: 'B' }],
+          },
+        ],
+      },
+    ]
+    expect(
+      resolvePredictionMatchId(
+        reordered,
+        {
+          predicted_side_index: 1,
+          predicted_participants: [{ id: 'b', name: 'B' }],
+        },
+        'e-1',
+      ),
+    ).toBe('e-2')
+  })
+
+  test('returns null when the snapshot matches no bout on the card', () => {
+    expect(
+      resolvePredictionMatchId(
+        matches,
+        {
+          predicted_side_index: 0,
+          predicted_participants: [{ id: 'z', name: 'Gone' }],
+        },
+        'e-1',
+      ),
+    ).toBeNull()
   })
 })

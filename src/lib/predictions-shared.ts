@@ -120,12 +120,48 @@ export function resolvePickedSide<T extends SideLike>(
   sides: Array<T>,
   prediction: PredictionLike,
 ): T | undefined {
-  return (
-    sides.find((s) => s.sideIndex === prediction.predicted_side_index) ??
-    sides.find((side) =>
-      sidesMatch(side.participants, predictionSideParticipants(prediction)),
-    )
+  // Prefer the participant snapshot: after a result lands (or the card is
+  // reordered), `side_index` is no longer a stable identity for the pick.
+  const snap = predictionSideParticipants(prediction)
+  if (snap.length > 0) {
+    return sides.find((side) => sidesMatch(side.participants, snap))
+  }
+  return sides.find((s) => s.sideIndex === prediction.predicted_side_index)
+}
+
+type MatchForRematch = {
+  id: string
+  sides: Array<SideLike>
+}
+
+/**
+ * Resolve which current match a stored prediction belongs to.
+ * Match PKs are `<eventId>-<match_index>`, so scraper card reorders move
+ * bouts across ids — identity is the participant snapshot, not the slot.
+ * Returns the preferred match when it still holds the pick; otherwise the
+ * first match on the card whose side matches the snapshot; otherwise null.
+ */
+export function resolvePredictionMatchId(
+  matches: ReadonlyArray<MatchForRematch>,
+  prediction: PredictionLike,
+  preferredMatchId: string,
+): string | null {
+  const snap = predictionSideParticipants(prediction)
+  if (snap.length === 0) {
+    return matches.some((m) => m.id === preferredMatchId)
+      ? preferredMatchId
+      : null
+  }
+
+  const preferred = matches.find((m) => m.id === preferredMatchId)
+  if (preferred?.sides.some((s) => sidesMatch(s.participants, snap))) {
+    return preferred.id
+  }
+
+  const rematched = matches.find((m) =>
+    m.sides.some((s) => sidesMatch(s.participants, snap)),
   )
+  return rematched?.id ?? null
 }
 
 /** Label for a stored pick, falling back to the participant snapshot. */

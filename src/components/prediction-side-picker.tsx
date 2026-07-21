@@ -10,9 +10,8 @@ import type { MatchPredictionRow } from '#/lib/predictions'
 import type { MatchSide } from '#/lib/events'
 import {
   pickLabel,
-  predictionSideParticipants,
+  resolvePickedSide,
   sideLabel,
-  sidesMatch,
 } from '#/lib/predictions-shared'
 import { PredictionStatusBadge } from '#/components/prediction-status-badge'
 import { useSpoilers } from '#/components/spoilers-provider'
@@ -209,13 +208,9 @@ export function PredictionSidePicker({
       </p>
       <div className="flex flex-wrap items-center justify-center gap-2">
         {sides.map((side) => {
-          const selected =
-            prediction?.predicted_side_index === side.sideIndex ||
-            (prediction != null &&
-              sidesMatch(
-                side.participants,
-                predictionSideParticipants(prediction),
-              ))
+          const picked =
+            prediction != null ? resolvePickedSide(sides, prediction) : undefined
+          const selected = picked != null && picked.id === side.id
           return (
             <Button
               key={side.id}

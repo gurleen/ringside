@@ -4,6 +4,7 @@ import { fetchCurrentUser } from '#/lib/auth.server'
 import { eventLockInstant } from '#/lib/event-time'
 import {
   isMatchPredictable,
+  resolvePredictionMatchId,
   snapshotParticipants,
   type PredictedParticipant,
 } from '#/lib/predictions-shared'
@@ -217,23 +218,60 @@ export async function performListEventPredictions(
   if (!trimmed) return {}
 
   // Score first so pending picks settle whenever the event page is viewed.
+  // The scorer rematches by participant snapshot when card slots moved.
   await performScoreEventPredictions(trimmed)
 
   const user = await fetchCurrentUser()
   if (!user) return {}
 
   const supabase = getSupabaseServerClient()
-  const { data: rows, error } = await supabase
-    .schema('predictions')
-    .from('match_predictions')
-    .select('*')
-    .eq('event_id', trimmed)
-    .eq('user_id', user.id)
+  const [{ data: rows, error }, { data: matchRows, error: matchError }] =
+    await Promise.all([
+      supabase
+        .schema('predictions')
+        .from('match_predictions')
+        .select('*')
+        .eq('event_id', trimmed)
+        .eq('user_id', user.id),
+      supabase
+        .from('matches')
+        .select(
+          'id, match_sides(side_index, match_side_participants(participant_role, participant_id, participant_name))',
+        )
+        .eq('event_id', trimmed),
+    ])
 
   if (error) throw new Error(error.message)
+  if (matchError) throw new Error(matchError.message)
 
+  const matches = (matchRows ?? []).map((m) => ({
+    id: m.id,
+    sides: m.match_sides.map((s) => ({
+      sideIndex: s.side_index,
+      participants: s.match_side_participants.map((p) => ({
+        role: p.participant_role,
+        id: p.participant_id,
+        name: p.participant_name,
+      })),
+    })),
+  }))
+
+  // Key the map by the bout the snapshot still belongs to — not the
+  // index-derived match_id slot the row was originally written against.
   const map: Record<string, MatchPredictionRow> = {}
-  for (const row of rows) map[row.match_id] = row
+  for (const row of rows ?? []) {
+    const key =
+      resolvePredictionMatchId(matches, row, row.match_id) ?? row.match_id
+    const existing = map[key]
+    if (!existing) {
+      map[key] = row
+      continue
+    }
+    const preferred = resolvePredictionMatchId(matches, row, key) === key
+    const existingPreferred =
+      resolvePredictionMatchId(matches, existing, key) === key
+    if (preferred && !existingPreferred) map[key] = row
+  }
   return map
 }
 
