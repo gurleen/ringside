@@ -590,6 +590,32 @@ export type Database = {
         }
         Relationships: []
       }
+      sdh_wrestler_accomplishments: {
+        Row: {
+          seq: number
+          value: string
+          wrestler_id: string
+        }
+        Insert: {
+          seq: number
+          value: string
+          wrestler_id: string
+        }
+        Update: {
+          seq?: number
+          value?: string
+          wrestler_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'sdh_wrestler_accomplishments_wrestler_id_fkey'
+            columns: ['wrestler_id']
+            isOneToOne: false
+            referencedRelation: 'sdh_wrestlers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       sdh_wrestler_alignments: {
         Row: {
           alignment: string
@@ -647,6 +673,76 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: 'sdh_wrestler_attributes_wrestler_id_fkey'
+            columns: ['wrestler_id']
+            isOneToOne: false
+            referencedRelation: 'sdh_wrestlers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      sdh_wrestler_career_awards: {
+        Row: {
+          image_url: string | null
+          name: string
+          seq: number
+          url: string | null
+          wrestler_id: string
+        }
+        Insert: {
+          image_url?: string | null
+          name: string
+          seq: number
+          url?: string | null
+          wrestler_id: string
+        }
+        Update: {
+          image_url?: string | null
+          name?: string
+          seq?: number
+          url?: string | null
+          wrestler_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'sdh_wrestler_career_awards_wrestler_id_fkey'
+            columns: ['wrestler_id']
+            isOneToOne: false
+            referencedRelation: 'sdh_wrestlers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      sdh_wrestler_hall_of_fames: {
+        Row: {
+          category: string | null
+          image_url: string | null
+          name: string
+          seq: number
+          url: string | null
+          wrestler_id: string
+          year: number | null
+        }
+        Insert: {
+          category?: string | null
+          image_url?: string | null
+          name: string
+          seq: number
+          url?: string | null
+          wrestler_id: string
+          year?: number | null
+        }
+        Update: {
+          category?: string | null
+          image_url?: string | null
+          name?: string
+          seq?: number
+          url?: string | null
+          wrestler_id?: string
+          year?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'sdh_wrestler_hall_of_fames_wrestler_id_fkey'
             columns: ['wrestler_id']
             isOneToOne: false
             referencedRelation: 'sdh_wrestlers'
@@ -782,6 +878,50 @@ export type Database = {
           },
         ]
       }
+      sdh_wrestler_title_wins: {
+        Row: {
+          details: string | null
+          image_url: string | null
+          promotion: string
+          seq: number
+          source: string
+          times: number | null
+          title: string
+          title_url: string | null
+          wrestler_id: string
+        }
+        Insert: {
+          details?: string | null
+          image_url?: string | null
+          promotion: string
+          seq: number
+          source: string
+          times?: number | null
+          title: string
+          title_url?: string | null
+          wrestler_id: string
+        }
+        Update: {
+          details?: string | null
+          image_url?: string | null
+          promotion?: string
+          seq?: number
+          source?: string
+          times?: number | null
+          title?: string
+          title_url?: string | null
+          wrestler_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'sdh_wrestler_title_wins_wrestler_id_fkey'
+            columns: ['wrestler_id']
+            isOneToOne: false
+            referencedRelation: 'sdh_wrestlers'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       sdh_wrestlers: {
         Row: {
           age: number | null
@@ -854,6 +994,13 @@ export type Database = {
             foreignKeyName: 'title_crosswalk_cagematch_id_fkey'
             columns: ['cagematch_id']
             isOneToOne: false
+            referencedRelation: 'mv_title_stats'
+            referencedColumns: ['title_id']
+          },
+          {
+            foreignKeyName: 'title_crosswalk_cagematch_id_fkey'
+            columns: ['cagematch_id']
+            isOneToOne: false
             referencedRelation: 'titles'
             referencedColumns: ['id']
           },
@@ -889,6 +1036,34 @@ export type Database = {
           wrestler_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: 'title_reign_champions_title_reign_id_fkey'
+            columns: ['title_reign_id']
+            isOneToOne: false
+            referencedRelation: 'mv_title_reign_stats'
+            referencedColumns: ['reign_id']
+          },
+          {
+            foreignKeyName: 'title_reign_champions_title_reign_id_fkey'
+            columns: ['title_reign_id']
+            isOneToOne: false
+            referencedRelation: 'mv_title_stats'
+            referencedColumns: ['longest_reign_id']
+          },
+          {
+            foreignKeyName: 'title_reign_champions_title_reign_id_fkey'
+            columns: ['title_reign_id']
+            isOneToOne: false
+            referencedRelation: 'mv_title_stats'
+            referencedColumns: ['most_defenses_reign_id']
+          },
+          {
+            foreignKeyName: 'title_reign_champions_title_reign_id_fkey'
+            columns: ['title_reign_id']
+            isOneToOne: false
+            referencedRelation: 'mv_title_stats'
+            referencedColumns: ['shortest_reign_id']
+          },
           {
             foreignKeyName: 'title_reign_champions_title_reign_id_fkey'
             columns: ['title_reign_id']
@@ -940,6 +1115,13 @@ export type Database = {
             foreignKeyName: 'title_reigns_title_id_fkey'
             columns: ['title_id']
             isOneToOne: false
+            referencedRelation: 'mv_title_stats'
+            referencedColumns: ['title_id']
+          },
+          {
+            foreignKeyName: 'title_reigns_title_id_fkey'
+            columns: ['title_id']
+            isOneToOne: false
             referencedRelation: 'titles'
             referencedColumns: ['id']
           },
@@ -960,150 +1142,6 @@ export type Database = {
           id?: string
           name?: string
           promotion?: string | null
-        }
-        Relationships: []
-      }
-      mv_title_reign_stats: {
-        Row: {
-          reign_id: string
-          title_id: string
-          reign_number: number
-          from_date: string | null
-          to_date: string | null
-          duration_days: number | null
-          team_name: string | null
-          from_date_parsed: string | null
-          to_date_parsed: string | null
-          champions: Json
-          defense_count: number
-          active: boolean
-        }
-        Insert: {
-          reign_id: string
-          title_id: string
-          reign_number: number
-          from_date?: string | null
-          to_date?: string | null
-          duration_days?: number | null
-          team_name?: string | null
-          from_date_parsed?: string | null
-          to_date_parsed?: string | null
-          champions?: Json
-          defense_count?: number
-          active?: boolean
-        }
-        Update: {
-          reign_id?: string
-          title_id?: string
-          reign_number?: number
-          from_date?: string | null
-          to_date?: string | null
-          duration_days?: number | null
-          team_name?: string | null
-          from_date_parsed?: string | null
-          to_date_parsed?: string | null
-          champions?: Json
-          defense_count?: number
-          active?: boolean
-        }
-        Relationships: []
-      }
-      mv_title_stats: {
-        Row: {
-          title_id: string
-          reign_count: number
-          total_defenses: number
-          unique_champions: number
-          avg_reign_days: number | null
-          active: boolean
-          current_reign_id: string | null
-          longest_reign_id: string | null
-          longest_reign_number: number | null
-          longest_reign_days: number | null
-          longest_reign_champions: Json
-          shortest_reign_id: string | null
-          shortest_reign_number: number | null
-          shortest_reign_days: number | null
-          shortest_reign_champions: Json
-          most_defenses_reign_id: string | null
-          most_defenses_reign_number: number | null
-          most_defenses_count: number | null
-          most_defenses_champions: Json
-          most_reigns_wrestler_id: string | null
-          most_reigns_wrestler_name: string | null
-          most_reigns_count: number | null
-          most_reigns_total_days: number | null
-          most_reigns_total_defenses: number | null
-          most_days_wrestler_id: string | null
-          most_days_wrestler_name: string | null
-          most_days_total: number | null
-          most_days_reigns_held: number | null
-          most_days_total_defenses: number | null
-          top_holders: Json
-        }
-        Insert: {
-          title_id: string
-          reign_count?: number
-          total_defenses?: number
-          unique_champions?: number
-          avg_reign_days?: number | null
-          active?: boolean
-          current_reign_id?: string | null
-          longest_reign_id?: string | null
-          longest_reign_number?: number | null
-          longest_reign_days?: number | null
-          longest_reign_champions?: Json
-          shortest_reign_id?: string | null
-          shortest_reign_number?: number | null
-          shortest_reign_days?: number | null
-          shortest_reign_champions?: Json
-          most_defenses_reign_id?: string | null
-          most_defenses_reign_number?: number | null
-          most_defenses_count?: number | null
-          most_defenses_champions?: Json
-          most_reigns_wrestler_id?: string | null
-          most_reigns_wrestler_name?: string | null
-          most_reigns_count?: number | null
-          most_reigns_total_days?: number | null
-          most_reigns_total_defenses?: number | null
-          most_days_wrestler_id?: string | null
-          most_days_wrestler_name?: string | null
-          most_days_total?: number | null
-          most_days_reigns_held?: number | null
-          most_days_total_defenses?: number | null
-          top_holders?: Json
-        }
-        Update: {
-          title_id?: string
-          reign_count?: number
-          total_defenses?: number
-          unique_champions?: number
-          avg_reign_days?: number | null
-          active?: boolean
-          current_reign_id?: string | null
-          longest_reign_id?: string | null
-          longest_reign_number?: number | null
-          longest_reign_days?: number | null
-          longest_reign_champions?: Json
-          shortest_reign_id?: string | null
-          shortest_reign_number?: number | null
-          shortest_reign_days?: number | null
-          shortest_reign_champions?: Json
-          most_defenses_reign_id?: string | null
-          most_defenses_reign_number?: number | null
-          most_defenses_count?: number | null
-          most_defenses_champions?: Json
-          most_reigns_wrestler_id?: string | null
-          most_reigns_wrestler_name?: string | null
-          most_reigns_count?: number | null
-          most_reigns_total_days?: number | null
-          most_reigns_total_defenses?: number | null
-          most_days_wrestler_id?: string | null
-          most_days_wrestler_name?: string | null
-          most_days_total?: number | null
-          most_days_reigns_held?: number | null
-          most_days_total_defenses?: number | null
-          top_holders?: Json
         }
         Relationships: []
       }
@@ -1318,7 +1356,73 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      mv_title_reign_stats: {
+        Row: {
+          active: boolean | null
+          champions: Json | null
+          defense_count: number | null
+          duration_days: number | null
+          from_date: string | null
+          from_date_parsed: string | null
+          reign_id: string | null
+          reign_number: number | null
+          team_name: string | null
+          title_id: string | null
+          to_date: string | null
+          to_date_parsed: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'title_reigns_title_id_fkey'
+            columns: ['title_id']
+            isOneToOne: false
+            referencedRelation: 'mv_title_stats'
+            referencedColumns: ['title_id']
+          },
+          {
+            foreignKeyName: 'title_reigns_title_id_fkey'
+            columns: ['title_id']
+            isOneToOne: false
+            referencedRelation: 'titles'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      mv_title_stats: {
+        Row: {
+          active: boolean | null
+          avg_reign_days: number | null
+          current_reign_id: string | null
+          longest_reign_champions: Json | null
+          longest_reign_days: number | null
+          longest_reign_id: string | null
+          longest_reign_number: number | null
+          most_days_reigns_held: number | null
+          most_days_total: number | null
+          most_days_total_defenses: number | null
+          most_days_wrestler_id: string | null
+          most_days_wrestler_name: string | null
+          most_defenses_champions: Json | null
+          most_defenses_count: number | null
+          most_defenses_reign_id: string | null
+          most_defenses_reign_number: number | null
+          most_reigns_count: number | null
+          most_reigns_total_days: number | null
+          most_reigns_total_defenses: number | null
+          most_reigns_wrestler_id: string | null
+          most_reigns_wrestler_name: string | null
+          reign_count: number | null
+          shortest_reign_champions: Json | null
+          shortest_reign_days: number | null
+          shortest_reign_id: string | null
+          shortest_reign_number: number | null
+          title_id: string | null
+          top_holders: Json | null
+          total_defenses: number | null
+          unique_champions: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       admin_clear_match_result: {
@@ -1328,11 +1432,14 @@ export type Database = {
       admin_set_match_result: {
         Args: {
           p_match_id: string
-          p_winner_side_id: string
           p_title_change?: boolean
+          p_winner_side_id: string
         }
         Returns: undefined
       }
+      cagematch_text_to_date: { Args: { d: string }; Returns: string }
+      is_dark_match: { Args: { match_type: string }; Returns: boolean }
+      is_house_show: { Args: { event_type: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

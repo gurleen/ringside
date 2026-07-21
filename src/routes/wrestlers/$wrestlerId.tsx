@@ -51,12 +51,13 @@ import { MatchResultText } from '#/components/match-result-text'
 import { SpoilerWinner } from '#/components/spoiler-winner'
 import { useSpoilers } from '#/components/spoilers-provider'
 
-type WrestlerTab = 'profile' | 'history' | 'matches' | 'rivalries'
+type WrestlerTab = 'profile' | 'history' | 'accolades' | 'matches' | 'rivalries'
 
 function parseWrestlerTab(value: unknown): WrestlerTab {
   if (
     value === 'matches' ||
     value === 'history' ||
+    value === 'accolades' ||
     value === 'rivalries'
   ) {
     return value
@@ -394,6 +395,7 @@ function WrestlerDetailPage() {
         <TabsList className="w-full sm:w-fit">
           <TabsTrigger value="profile">Profile</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="accolades">Accolades</TabsTrigger>
           <TabsTrigger value="matches">Matches</TabsTrigger>
           <TabsTrigger value="rivalries">Rivalries</TabsTrigger>
         </TabsList>
@@ -408,6 +410,10 @@ function WrestlerDetailPage() {
 
         <TabsContent value="history" className="pt-4">
           <SdhHistories sdh={sdh} />
+        </TabsContent>
+
+        <TabsContent value="accolades" className="pt-4">
+          <SdhAccolades sdh={sdh} />
         </TabsContent>
 
         <TabsContent value="matches" className="pt-4">
@@ -685,6 +691,41 @@ function SdhHistories({ sdh }: { sdh: SdhProfile | null }) {
         />
       ))}
     </div>
+  )
+}
+
+function SdhAccolades({ sdh }: { sdh: SdhProfile | null }) {
+  const accomplishments = sdh?.accomplishments ?? []
+
+  if (accomplishments.length === 0) {
+    return (
+      <p className="py-8 text-center text-sm text-muted-foreground">
+        No accolades on record.
+      </p>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2">
+          Accolades
+          <Badge variant="secondary">{accomplishments.length}</Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ol className="ml-1 border-l pl-4">
+          {accomplishments.map((item) => (
+            <li
+              key={`${item.seq}-${item.value}`}
+              className="relative py-2 text-sm before:absolute before:top-4 before:left-[-1.18rem] before:size-2 before:rounded-full before:bg-border"
+            >
+              {item.value}
+            </li>
+          ))}
+        </ol>
+      </CardContent>
+    </Card>
   )
 }
 
