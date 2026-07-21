@@ -11,6 +11,7 @@ export type SdhWrestlerAlignment = Tables<'sdh_wrestler_alignments'>
 export type SdhWrestlerAttribute = Tables<'sdh_wrestler_attributes'>
 export type SdhWrestlerRole = Tables<'sdh_wrestler_roles'>
 export type SdhWrestlerImage = Tables<'sdh_wrestler_images'>
+export type SdhWrestlerAccomplishment = Tables<'sdh_wrestler_accomplishments'>
 export type SdhTitle = Tables<'sdh_titles'>
 export type SdhTitleNameHistory = Tables<'sdh_title_name_history'>
 
@@ -27,6 +28,7 @@ export interface SdhWrestlerProfile {
   attributes: Array<SdhWrestlerAttribute>
   roles: Array<SdhWrestlerRole>
   images: Array<SdhWrestlerImage>
+  accomplishments: Array<SdhWrestlerAccomplishment>
 }
 
 /**
@@ -57,6 +59,7 @@ export async function getSdhWrestlerProfile(
     attributes,
     roles,
     images,
+    accomplishments,
   ] = await Promise.all([
     supabase
       .from('sdh_wrestlers')
@@ -93,6 +96,11 @@ export async function getSdhWrestlerProfile(
       .select('*')
       .eq('wrestler_id', crosswalk.sdh_id)
       .order('seq'),
+    supabase
+      .from('sdh_wrestler_accomplishments')
+      .select('*')
+      .eq('wrestler_id', crosswalk.sdh_id)
+      .order('seq'),
   ])
 
   for (const result of [
@@ -103,6 +111,7 @@ export async function getSdhWrestlerProfile(
     attributes,
     roles,
     images,
+    accomplishments,
   ]) {
     if (result.error) throw new Error(result.error.message)
   }
@@ -116,6 +125,7 @@ export async function getSdhWrestlerProfile(
     attributes: attributes.data ?? [],
     roles: roles.data ?? [],
     images: images.data ?? [],
+    accomplishments: accomplishments.data ?? [],
   }
 }
 

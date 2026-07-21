@@ -110,7 +110,8 @@ Bun auto-loads `.env`; do not add `dotenv`.
   (`auth.uid() = user_id`); prediction writes also require the event lock
   instant to be in the future and the match to be non-decisive. Tables added
   after the initial policy migration (`title_reigns` /
-  `title_reign_champions`, then SDH + crosswalk tables) needed follow-up
+  `title_reign_champions`, then SDH + crosswalk tables, then
+  `sdh_wrestler_accomplishments`) needed follow-up
   public-read migrations.
 
 ### Migrations applied (via MCP `apply_migration`)
@@ -261,6 +262,9 @@ public`; in `private` so it's off the Data API) which recomputes the home
 32. `predictions_score_swap_stale_occupant` — displace by swapping match ids
     (stale occupant → orphan slot + void; rematched pick → resolved bout) so
     unique `(user_id, match_id)` is never violated.
+33. `public_read_sdh_wrestler_accomplishments` — public `SELECT` RLS on
+    `sdh_wrestler_accomplishments` (RLS was on with no policies, so the anon
+    client returned an empty set despite ~7.5k loaded rows).
 
 ## 6. Data model
 
@@ -295,7 +299,7 @@ Primary/foreign keys and approximate row counts:
 | `title_crosswalk`           | 49    | Same shape for `titles.id` ↔ `sdh_titles.id`.                                                                                                                                                                                                                                                                                           |
 | `sdh_wrestlers`             | ~1.6k | Smackdown Hotel wrestlers (slug PK). Includes `image_url` (full-body render).                                                                                                                                                                                                                                                           |
 | `sdh_wrestler_images`       | ~7.6k | Dated headshot gallery (`label`, `image_url`) keyed by `wrestler_id` = SDH id.                                                                                                                                                                                                                                                          |
-| `sdh_wrestler_*`            | —     | Also: `attributes`, `name_history`, `promotions` (with brand), `roles`, `alignments`.                                                                                                                                                                                                                                                   |
+| `sdh_wrestler_*`            | —     | Also: `attributes`, `name_history`, `promotions` (with brand), `roles`, `alignments`, `accomplishments` (ordered `value` lines — awards, tournaments, hall-of-fame, etc.).                                                                                                                                                              |
 | `sdh_titles`                | 58    | SDH titles; `image_url` for belt art.                                                                                                                                                                                                                                                                                                   |
 | `sdh_title_*`               | —     | `name_history`, `reigns` (richer notes/events/`is_vacant`), `reign_champions`.                                                                                                                                                                                                                                                          |
 
@@ -475,7 +479,7 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
 | `lib/predictions.ts` / `.server.ts`        | Match prediction server fns + query options: per-event user picks (`listEventPredictions`), paginated user predictions (`listUserPredictions`), all-time leaderboard (`getLeaderboard`), upsert/delete until lock, lazy `scoreEventPredictions` RPC. `predictions-shared.ts` holds `isMatchPredictable`, participant fingerprint/snapshot helpers, `pickLabel`/`sideLabel`/`resolvePickedSide`/`resolvePredictionMatchId`, complete-slate helpers (`hasCompletePredictionSlate`), and `PREDICTION_POINTS_WINNER` (1).                                                                                                                                                                                                  |
 | `lib/titles-shared.ts`                     | Client-safe title reign helpers: `isTitleDefenseRow` (excludes dark matches), `eventDateInReign`, `formatChampionReignLabel`, `formatDefenseCountLabel`. |
 | `lib/titles.ts`                            | Server fns + query options: title list (`listTitles`, search/paginate/`promotion`/`status` filter, with reign counts + active flag + optional SDH `imageUrl`), distinct title promotions (`listTitlePromotions`), title detail header (`getTitle` — metadata + SDH profile), paginated reign history (`listTitleReigns`, page size 10), title stats from `mv_title_stats` (`getTitleStats`), lazy `listTitleReignDefenses` (per-reign defense match list), and curated home top champions (`getWorldChampions` → `TopChampionsRow[]`, 8 fixed title slots with SDH portraits + belt art). Reuses `getPromotionResolver`, `resolveTitleImageUrls`, `resolveWrestlerPortraitUrls`, and `matches-shared` reign inference. |
-| `lib/sdh.ts`                               | Typed SDH crosswalk helpers (`confidence >= 0.7`): `getSdhWrestlerProfile` loads the highest-confidence wrestler match plus ordered name, promotion/brand, alignment, attribute, role, and image collections; `getSdhTitleProfile` loads belt art + ordered `sdh_title_name_history` for a Cagematch title id; `resolveTitleImageUrls` maps Cagematch title ids to belt art; `resolveWrestlerHeadshotUrls` maps Cagematch wrestler ids to the latest gallery headshot (lowest `seq` = most recent); `resolveWrestlerPortraitUrls` maps to `sdh_wrestlers.image_url` full-body renders with gallery fallback.                                                                                                                                                                                  |
+| `lib/sdh.ts`                               | Typed SDH crosswalk helpers (`confidence >= 0.7`): `getSdhWrestlerProfile` loads the highest-confidence wrestler match plus ordered name, promotion/brand, alignment, attribute, role, image, and accomplishment collections; `getSdhTitleProfile` loads belt art + ordered `sdh_title_name_history` for a Cagematch title id; `resolveTitleImageUrls` maps Cagematch title ids to belt art; `resolveWrestlerHeadshotUrls` maps Cagematch wrestler ids to the latest gallery headshot (lowest `seq` = most recent); `resolveWrestlerPortraitUrls` maps to `sdh_wrestlers.image_url` full-body renders with gallery fallback.                                                                                                                                                                                  |
 | `lib/share-image.ts`                       | `getWrestlerHeadshotDataUrls` + `getTitleImageDataUrls` server fns (+ query options): fetch up to 48 SDH headshots / belt-art images server-side (ids resolved via crosswalk, never raw URLs) and return base64 data URLs so the share-card `html-to-image` export never fetches cross-origin. Used by review (≤4) and prediction (full event slate) share cards.                                                                                                                                                                                                                                                          |
 | `lib/share-card-export.ts`                 | Client-safe PNG export helpers shared by review/prediction share dialogs: `SHARE_SIZE`/`PREVIEW_SIZE`, `exportNodeToPngBlob`, `downloadPngBlob`, Safari-safe `copyPngBlob`, `shareFilename`.                                                                                                                                                                                                                                                                                                                                                                                      |
 | `routes/__root.tsx`                        | Root document + header/nav; `beforeLoad` ensures the query-cached Auth user and promotion abbreviations (`promotionAbbrsQueryOptions`); Log in / Sign up or profile menu. Primary nav destinations preload on render. Nav links are inline on `md+` and collapse into a hamburger-triggered left `Sheet` on mobile (shared `NavLinks`; sheet closes on navigation). Global **Spoilers** switch (desktop header + mobile sheet footer) via `SpoilersProvider` / `SpoilersToggle`.                                                                                                                                                                                                               |
@@ -559,7 +563,7 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   "Free agent"). No rating, Cagematch profile link, or separate headshot
   gallery. Below a separator, the
   bio facts render in a compact multi-column grid. There is no separate Overview, Current status, or Cagematch promotions
-  card. **Profile** / **History** / **Matches** / **Rivalries** URL tabs
+  card. **Profile** / **History** / **Accolades** / **Matches** / **Rivalries** URL tabs
   (`tab` defaults to `profile`; optional `opponent` wrestler id for Rivalries;
   tab selection updates optimistically before the URL navigation completes,
   navigates with `resetScroll: false` so the page keeps its scroll position,
@@ -575,7 +579,9 @@ Access via `.schema('predictions')`. Not edge-cached. Lock instant = admin `even
   face/heel timelines as one always-open card per history with a count badge,
   packed masonry-style via CSS columns on `md+` — `md:columns-2` on the
   container, `break-inside-avoid mb-4` on cards — so short cards don't leave
-  row gaps next to tall ones). Matches lists that worker's bouts
+  row gaps next to tall ones). **Accolades** shows SDH career accomplishments
+  (`sdh_wrestler_accomplishments`) as a single ordered timeline card when
+  present; empty copy when none. Matches lists that worker's bouts
   (  `listWrestlerMatches` via `match_side_participants.participant_id`), newest
   `event_date` first, page size 10 (`page` search param). Each row shows
   win/loss, date, linked event, result line (`X def. Y` or `vs`; sides of 5+
